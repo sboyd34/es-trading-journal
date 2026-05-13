@@ -21,7 +21,15 @@ export interface Trade {
   notes: string | null
   reflection: string | null
   tags: string[]
+  instrument: string
   tradovate_order_id: string | null
+  entry_chart_url: string | null
+  exit_chart_url: string | null
+  trade_bias: 'Bull' | 'Bear' | 'Neutral' | null
+  trade_setup: string | null
+  trade_trigger: string | null
+  trade_location: string | null
+  trade_risk: string | null
   created_at: string
 }
 
@@ -79,6 +87,7 @@ export interface PlaybookSetup {
 
 export interface DashboardStats {
   totalPnL: number
+  totalGrossPnL: number
   winRate: number
   totalTrades: number
   avgWin: number
@@ -86,6 +95,54 @@ export interface DashboardStats {
   profitFactor: number
   currentStreak: number
   todayPnL: number
+  todayGrossPnL: number
+}
+
+export interface BacktestSession {
+  id: string
+  user_id: string
+  date: string
+  onh: number | null
+  onl: number | null
+  pdh: number | null
+  pdl: number | null
+  vwap: number | null
+  bias: 'Bull' | 'Bear' | 'Neutral' | null
+  notes: string | null
+  created_at: string
+}
+
+export interface BacktestTrade {
+  id: string
+  user_id: string
+  session_id: string | null
+  date: string
+  entry_time: string | null
+  exit_time: string | null
+  direction: 'long' | 'short'
+  quantity: number
+  entry_price: number
+  exit_price: number
+  instrument: string
+  gross_pnl: number
+  commission: number
+  net_pnl: number
+  stop_loss: number | null
+  target: number | null
+  mae: number | null
+  mfe: number | null
+  mood: string | null
+  grade: 'A' | 'B' | 'C' | null
+  setup_tag: string | null
+  notes: string | null
+  reflection: string | null
+  tags: string[]
+  trade_bias: 'Bull' | 'Bear' | 'Neutral' | null
+  trade_setup: string | null
+  trade_trigger: string | null
+  trade_location: string | null
+  trade_risk: string | null
+  created_at: string
 }
 
 export interface ChecklistItem {

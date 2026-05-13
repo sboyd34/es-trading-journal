@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { Trade, RiskRules, DailySession, DashboardStats } from '@/types'
 import StatsCards from '@/components/dashboard/StatsCards'
 import EquityCurve from '@/components/dashboard/EquityCurve'
@@ -10,6 +10,12 @@ import SessionHeatmap from '@/components/dashboard/SessionHeatmap'
 import EmotionBreakdown from '@/components/dashboard/EmotionBreakdown'
 import TiltMeter from '@/components/dashboard/TiltMeter'
 import RiskRulesBars from '@/components/dashboard/RiskRulesBars'
+import SessionTimer from '@/components/dashboard/SessionTimer'
+import SessionCloseNotifier from '@/components/dashboard/SessionCloseNotifier'
+import TradovateSyncBadge from '@/components/dashboard/TradovateSyncBadge'
+import TradingWindowIndicator from '@/components/dashboard/TradingWindowIndicator'
+import MarketNewsFeed from '@/components/dashboard/MarketNewsFeed'
+import ProactiveCoachingCard from '@/components/dashboard/ProactiveCoachingCard'
 
 interface DashboardClientProps {
   trades: Trade[]
@@ -22,6 +28,7 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
   if (!trades.length) {
     return {
       totalPnL: 0,
+      totalGrossPnL: 0,
       winRate: 0,
       totalTrades: 0,
       avgWin: 0,
@@ -29,10 +36,12 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
       profitFactor: 0,
       currentStreak: 0,
       todayPnL: todayTrades.reduce((s, t) => s + t.net_pnl, 0),
+      todayGrossPnL: todayTrades.reduce((s, t) => s + t.gross_pnl, 0),
     }
   }
 
   const totalPnL = trades.reduce((s, t) => s + t.net_pnl, 0)
+  const totalGrossPnL = trades.reduce((s, t) => s + t.gross_pnl, 0)
   const winners = trades.filter((t) => t.net_pnl > 0)
   const losers = trades.filter((t) => t.net_pnl <= 0)
   const winRate = (winners.length / trades.length) * 100
@@ -42,6 +51,7 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
   const grossLosses = Math.abs(losers.reduce((s, t) => s + t.net_pnl, 0))
   const profitFactor = grossLosses > 0 ? grossWins / grossLosses : grossWins > 0 ? Infinity : 0
   const todayPnL = todayTrades.reduce((s, t) => s + t.net_pnl, 0)
+  const todayGrossPnL = todayTrades.reduce((s, t) => s + t.gross_pnl, 0)
 
   // Compute current streak (consecutive wins or losses from most recent)
   const sorted = [...trades].sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime())
@@ -60,6 +70,7 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
 
   return {
     totalPnL,
+    totalGrossPnL,
     winRate,
     totalTrades: trades.length,
     avgWin,
@@ -67,30 +78,72 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
     profitFactor,
     currentStreak: streak,
     todayPnL,
+    todayGrossPnL,
   }
 }
 
 export default function DashboardClient({ trades, todayTrades, riskRules, session }: DashboardClientProps) {
   const stats = useMemo(() => computeStats(trades, todayTrades), [trades, todayTrades])
+  const [postLossDay, setPostLossDay] = useState(false)
+  const [macroEventDetected, setMacroEventDetected] = useState(false)
+
+  useEffect(() => {
+    setPostLossDay(localStorage.getItem('post_loss_day') === 'true')
+  }, [])
+
+  const handleMacroEvent = useCallback((detected: boolean) => {
+    setMacroEventDetected(detected)
+  }, [])
 
   return (
     <div className="space-y-6">
+      <p className="text-center text-sm italic text-gray-500 tracking-wide">
+        I am a disciplined, patient and objective trader.
+      </p>
+      <SessionCloseNotifier />
+
+      {/* Post-loss day banner */}
+      {postLossDay && (
+        <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-3">
+          <span className="text-amber-400 text-lg">⚠️</span>
+          <div>
+            <p className="text-sm font-semibold text-amber-300">Post-loss day — half base size today</p>
+            <p className="text-xs text-amber-400/70 mt-0.5">Automatically trade reduced size this session. Reset in Settings when ready.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Proactive coaching — only renders when signals are present */}
+      <ProactiveCoachingCard trades={trades} todayTrades={todayTrades} riskRules={riskRules} />
+
+      {/* Trading window indicator */}
+      <TradingWindowIndicator macroEventDetected={macroEventDetected} />
+
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-sm text-gray-400 mt-1">
-          {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          {session?.checklist_passed && (
-            <span className="ml-2 text-emerald-400 font-medium">✓ Checklist passed</span>
-          )}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <p className="text-sm text-gray-400 mt-1">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {session?.checklist_passed && (
+              <span className="ml-2 text-emerald-400 font-medium">✓ Checklist passed</span>
+            )}
+          </p>
+        </div>
+        <TradovateSyncBadge />
       </div>
 
       {/* Stats cards */}
-      <StatsCards stats={stats} todayPnL={stats.todayPnL} />
+      <StatsCards stats={stats} todayPnL={stats.todayPnL} todayGrossPnL={stats.todayGrossPnL} />
+
+      {/* Session timer */}
+      <SessionTimer todayTrades={todayTrades} />
 
       {/* Equity curve full width */}
       <EquityCurve trades={trades} />
+
+      {/* Market news feed */}
+      <MarketNewsFeed onMacroEvent={handleMacroEvent} />
 
       {/* Middle row: calendar | heatmap | emotion */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

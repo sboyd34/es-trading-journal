@@ -10,8 +10,11 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ['/login', '/signup']
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
+  // API routes that use their own auth (secret-header) — bypass cookie auth
+  const isPublicApiRoute = pathname.startsWith('/api/brief/')
+
   // If user is not authenticated and trying to access a protected route
-  if (!user && !isPublicRoute) {
+  if (!user && !isPublicRoute && !isPublicApiRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

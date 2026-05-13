@@ -1,31 +1,254 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Trade } from '@/types'
 import { cn, getMoodEmoji, formatCurrency } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
+import { Mic, Square, Camera, Loader2, X, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
+import { SYSTEM_SETUPS } from '@/lib/trading-system'
+import type { GateAnswers } from '@/components/journal/FiveWordGateModal'
 
 interface TradeAnnotationFormProps {
   trade: Trade
   onClose: () => void
   onSaved: (trade: Trade) => void
+  initialStopLoss?: string
+  initialTarget?: string
+  initialInPlan?: boolean
+  isRevengeTrade?: boolean
+  gateAnswers?: GateAnswers
 }
 
 const MOODS = ['calm', 'confident', 'anxious', 'FOMO', 'revenge', 'hesitant', 'bored', 'overconfident'] as const
 const GRADES = ['A', 'B', 'C'] as const
+const BUCKET = 'trade-charts'
 
-export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAnnotationFormProps) {
+// ─── Image upload slot ────────────────────────────────────────────────────────
+
+function ImageUploadSlot({
+  label,
+  currentUrl,
+  uploading,
+  onFile,
+  onClear,
+}: {
+  label: string
+  currentUrl: string | null
+  uploading: boolean
+  onFile: (file: File) => void
+  onClear: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-gray-400 mb-1.5">{label}</p>
+      {currentUrl ? (
+        <div className="relative group rounded-lg overflow-hidden border border-gray-700">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={currentUrl}
+            alt={label}
+            className="w-full h-28 object-cover"
+          />
+          <div className="absolute inset-0 bg-gray-900/0 group-hover:bg-gray-900/40 transition flex items-start justify-end gap-1 p-1">
+            <a
+              href={currentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="p-1 rounded-full bg-gray-900/80 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition"
+              title="Open full size"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <button
+              type="button"
+              onClick={onClear}
+              className="p-1 rounded-full bg-gray-900/80 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
+              title="Remove"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="w-full h-28 border-2 border-dashed border-gray-700 hover:border-gray-500 rounded-lg flex flex-col items-center justify-center gap-1.5 text-gray-500 hover:text-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-xs">Uploading…</span>
+            </>
+          ) : (
+            <>
+              <Camera className="h-5 w-5" />
+              <span className="text-xs">Upload chart</span>
+              <span className="text-[10px] text-gray-600">or camera roll on mobile</span>
+            </>
+          )}
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) onFile(file)
+          e.target.value = ''
+        }}
+      />
+    </div>
+  )
+}
+
+// ─── Main form ────────────────────────────────────────────────────────────────
+
+export default function TradeAnnotationForm({
+  trade,
+  onClose,
+  onSaved,
+  initialStopLoss,
+  initialTarget,
+  initialInPlan,
+  isRevengeTrade,
+  gateAnswers,
+}: TradeAnnotationFormProps) {
   const [mood, setMood] = useState<Trade['mood']>(trade.mood)
   const [grade, setGrade] = useState<Trade['grade']>(trade.grade)
-  const [setupTag, setSetupTag] = useState(trade.setup_tag || '')
+  const [showRubric, setShowRubric] = useState(false)
+  const [setupTag, setSetupTag] = useState(gateAnswers?.setup || trade.setup_tag || '')
   const [mae, setMae] = useState(trade.mae?.toString() || '')
   const [mfe, setMfe] = useState(trade.mfe?.toString() || '')
-  const [stopLoss, setStopLoss] = useState(trade.stop_loss?.toString() || '')
-  const [target, setTarget] = useState(trade.target?.toString() || '')
+  const [stopLoss, setStopLoss] = useState(initialStopLoss ?? trade.stop_loss?.toString() ?? '')
+  const [target, setTarget] = useState(initialTarget ?? trade.target?.toString() ?? '')
   const [notes, setNotes] = useState(trade.notes || '')
   const [reflection, setReflection] = useState(trade.reflection || '')
-  const [tags, setTags] = useState((trade.tags || []).join(', '))
+  const [tags, setTags] = useState(() => {
+    const existing = (trade.tags || []).filter((t) => t !== 'off-plan')
+    if (initialInPlan === false) return ['off-plan', ...existing].join(', ')
+    return existing.join(', ')
+  })
+  const [instrument, setInstrument] = useState(trade.instrument || 'ES')
   const [saving, setSaving] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+
+  // Chart upload state — initialise from existing trade URLs
+  const [entryChart, setEntryChart] = useState<string | null>(trade.entry_chart_url ?? null)
+  const [exitChart, setExitChart] = useState<string | null>(trade.exit_chart_url ?? null)
+  const [uploadingEntry, setUploadingEntry] = useState(false)
+  const [uploadingExit, setUploadingExit] = useState(false)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop()
+    }
+  }, [])
+
+  // ── Voice recording ──────────────────────────────────────────────────────
+
+  function toggleRecording() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = window as any
+    const SpeechRecognitionAPI = win.SpeechRecognition || win.webkitSpeechRecognition
+
+    if (!SpeechRecognitionAPI) {
+      toast.error('Voice input is not supported in this browser')
+      return
+    }
+
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = new SpeechRecognitionAPI() as any
+    recognition.continuous = true
+    recognition.interimResults = false
+    recognition.lang = 'en-US'
+
+    recognition.onresult = (event: { results: ArrayLike<SpeechRecognitionResult>; resultIndex: number }) => {
+      const transcript = Array.from(event.results as ArrayLike<SpeechRecognitionResult>)
+        .slice(event.resultIndex)
+        .map((r) => r[0].transcript)
+        .join(' ')
+      setNotes((prev) => (prev ? prev + ' ' + transcript : transcript))
+    }
+
+    recognition.onerror = () => {
+      toast.error('Voice recognition error — please try again')
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => setIsRecording(false)
+
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+    toast.success('Listening… speak your notes', { duration: 2000 })
+  }
+
+  // ── Chart upload/remove ──────────────────────────────────────────────────
+
+  async function handleImageUpload(file: File, type: 'entry' | 'exit') {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10 MB')
+      return
+    }
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${trade.user_id}/${trade.id}/${type}.${ext}`
+
+    if (type === 'entry') setUploadingEntry(true); else setUploadingExit(true)
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, file, { upsert: true, contentType: file.type })
+
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
+      // Append cache-buster so browsers reload replaced images
+      const url = `${data.publicUrl}?t=${Date.now()}`
+
+      if (type === 'entry') setEntryChart(url); else setExitChart(url)
+      toast.success(`${type === 'entry' ? 'Entry' : 'Exit'} chart uploaded`)
+    } catch (err) {
+      toast.error('Upload failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally {
+      if (type === 'entry') setUploadingEntry(false); else setUploadingExit(false)
+    }
+  }
+
+  async function handleImageRemove(type: 'entry' | 'exit') {
+    const url = type === 'entry' ? entryChart : exitChart
+    if (!url) return
+
+    // Extract the storage path from the public URL
+    const storagePath = url.split(`/${BUCKET}/`)[1]?.split('?')[0]
+    if (storagePath) {
+      await supabase.storage.from(BUCKET).remove([storagePath])
+    }
+
+    if (type === 'entry') setEntryChart(null); else setExitChart(null)
+    toast.success('Chart removed')
+  }
+
+  // ── Save ─────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     setSaving(true)
@@ -44,6 +267,16 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
           notes: notes || null,
           reflection: reflection || null,
           tags: tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+          instrument,
+          entry_chart_url: entryChart ? entryChart.split('?')[0] : null,
+          exit_chart_url: exitChart ? exitChart.split('?')[0] : null,
+          ...(gateAnswers && {
+            trade_bias: gateAnswers.bias,
+            trade_setup: gateAnswers.setup,
+            trade_trigger: gateAnswers.trigger,
+            trade_location: gateAnswers.location,
+            trade_risk: gateAnswers.risk,
+          }),
         }),
       })
 
@@ -68,6 +301,8 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
     B: 'border-yellow-500 bg-yellow-500/20 text-yellow-400',
     C: 'border-red-500 bg-red-500/20 text-red-400',
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5">
@@ -95,6 +330,19 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
         </div>
       </div>
 
+      {/* Revenge trade warning */}
+      {isRevengeTrade && (
+        <div className="flex items-start gap-2.5 bg-amber-500/10 border border-amber-500/40 rounded-lg px-3 py-2.5">
+          <span className="text-amber-400 text-base mt-0.5">⚠️</span>
+          <div>
+            <p className="text-sm font-semibold text-amber-300">Potential Revenge Trade</p>
+            <p className="text-xs text-amber-400/80 mt-0.5">
+              This trade was entered within 3 minutes of a losing trade. Review carefully.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Mood selector */}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-2">Mood</label>
@@ -117,10 +365,20 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
         </div>
       </div>
 
-      {/* Grade selector */}
+      {/* Grade selector + rubric */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">Grade</label>
-        <div className="flex gap-3">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-300">Grade</label>
+          <button
+            type="button"
+            onClick={() => setShowRubric(!showRubric)}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition"
+          >
+            Grade Guide
+            {showRubric ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+        </div>
+        <div className="flex gap-3 mb-2">
           {GRADES.map((g) => (
             <button
               key={g}
@@ -136,21 +394,55 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
             </button>
           ))}
         </div>
+        {showRubric && (
+          <div className="mt-2 rounded-lg border border-gray-700/60 bg-gray-900/50 divide-y divide-gray-700/40 text-xs">
+            <div className="p-3">
+              <p className="font-semibold text-emerald-400 mb-1">A — All criteria met</p>
+              <p className="text-gray-400 leading-relaxed">1H bias clear and aligned · Correct setup from priority list · Approved location with room · Break→Retest→Confirm→Enter followed · Inside approved time window · Emotionally flat</p>
+            </div>
+            <div className="p-3">
+              <p className="font-semibold text-yellow-400 mb-1">B — One minor deviation</p>
+              <p className="text-gray-400 leading-relaxed">Slightly early entry · Tier 2 location without extra confirmation candle · Small size adjustment · Otherwise rule-following</p>
+            </div>
+            <div className="p-3">
+              <p className="font-semibold text-red-400 mb-1">C — Rule violation</p>
+              <p className="text-gray-400 leading-relaxed">POC/mid-value/chop entry · Wrong time window · Wrong direction vs bias · Chased extended candle · Entered on bubble/fire alone · FOMO or revenge state · Blind-touch trade</p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Setup tag */}
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1.5">Setup Tag</label>
-        <input
-          type="text"
-          value={setupTag}
-          onChange={(e) => setSetupTag(e.target.value)}
-          placeholder="e.g. Breakout, Fade, VWAP test..."
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+      {/* Instrument + Setup tag row */}
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Instrument</label>
+          <select
+            value={instrument}
+            onChange={(e) => setInstrument(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="ES">ES ($50/pt)</option>
+            <option value="NQ">NQ ($20/pt)</option>
+            <option value="MES">MES ($5/pt)</option>
+            <option value="MNQ">MNQ ($2/pt)</option>
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-gray-400 mb-1">Setup Tag</label>
+          <select
+            value={setupTag}
+            onChange={(e) => setSetupTag(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select setup...</option>
+            {SYSTEM_SETUPS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* MAE / MFE / SL / Target in a grid */}
+      {/* MAE / MFE / SL / Target */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1">MAE (pts)</label>
@@ -198,9 +490,40 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
         </div>
       </div>
 
-      {/* Notes */}
+      {/* Notes with voice input */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1.5">Notes</label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-sm font-medium text-gray-300">Notes</label>
+          <button
+            type="button"
+            onClick={toggleRecording}
+            title={isRecording ? 'Stop recording' : 'Record voice note'}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition',
+              isRecording
+                ? 'bg-red-500/20 border border-red-500/50 text-red-400 animate-pulse'
+                : 'bg-gray-700/50 border border-gray-600/50 text-gray-400 hover:text-white hover:border-gray-500'
+            )}
+          >
+            {isRecording ? (
+              <>
+                <Square className="h-3 w-3 fill-current" />
+                Stop
+              </>
+            ) : (
+              <>
+                <Mic className="h-3 w-3" />
+                Voice
+              </>
+            )}
+          </button>
+        </div>
+        {isRecording && (
+          <div className="flex items-center gap-2 mb-1.5 text-xs text-red-400">
+            <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+            Listening — speak now
+          </div>
+        )}
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -234,6 +557,30 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
         />
       </div>
 
+      {/* Chart screenshots */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Camera className="h-4 w-4 text-gray-400" />
+          <label className="text-sm font-medium text-gray-300">Chart Screenshots</label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <ImageUploadSlot
+            label="Entry Chart"
+            currentUrl={entryChart}
+            uploading={uploadingEntry}
+            onFile={(file) => handleImageUpload(file, 'entry')}
+            onClear={() => handleImageRemove('entry')}
+          />
+          <ImageUploadSlot
+            label="Exit Chart"
+            currentUrl={exitChart}
+            uploading={uploadingExit}
+            onFile={(file) => handleImageUpload(file, 'exit')}
+            onClear={() => handleImageRemove('exit')}
+          />
+        </div>
+      </div>
+
       {/* Actions */}
       <div className="flex gap-3 pt-2">
         <button
@@ -244,10 +591,10 @@ export default function TradeAnnotationForm({ trade, onClose, onSaved }: TradeAn
         </button>
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || uploadingEntry || uploadingExit}
           className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-semibold text-white transition"
         >
-          {saving ? 'Saving...' : 'Save Annotation'}
+          {saving ? 'Saving…' : uploadingEntry || uploadingExit ? 'Uploading…' : 'Save Annotation'}
         </button>
       </div>
     </div>

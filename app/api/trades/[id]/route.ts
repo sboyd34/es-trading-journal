@@ -46,6 +46,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       'notes',
       'reflection',
       'tags',
+      'instrument',
+      'entry_chart_url',
+      'exit_chart_url',
+      'trade_bias',
+      'trade_setup',
+      'trade_trigger',
+      'trade_location',
+      'trade_risk',
     ]
 
     const updateData: Record<string, unknown> = {}

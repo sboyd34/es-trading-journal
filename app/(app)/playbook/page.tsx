@@ -6,8 +6,9 @@ import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Modal } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
-import { Plus, Tag, BarChart2, ChevronRight, X } from 'lucide-react'
+import { Plus, Tag, BarChart2, ChevronRight, X, Download } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { PLAYBOOK_SETUPS } from '@/lib/trading-system'
 
 interface SetupWithStats extends PlaybookSetup {
   tradeCount: number
@@ -30,6 +31,7 @@ export default function PlaybookPage() {
   const [exitCriteria, setExitCriteria] = useState('')
   const [tags, setTags] = useState('')
   const [saving, setSaving] = useState(false)
+  const [loadingSystem, setLoadingSystem] = useState(false)
 
   const supabase = createClient()
 
@@ -110,6 +112,34 @@ export default function PlaybookPage() {
     }
   }
 
+  async function handleLoadSystemSetups() {
+    setLoadingSystem(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      const existingNames = new Set(setups.map((s) => s.name))
+      const toInsert = PLAYBOOK_SETUPS.filter((s) => !existingNames.has(s.name)).map((s) => ({
+        user_id: user.id,
+        ...s,
+      }))
+
+      if (toInsert.length === 0) {
+        toast('All system setups already loaded', { icon: 'ℹ️' })
+        return
+      }
+
+      const { data, error } = await supabase.from('playbook_setups').insert(toInsert).select()
+      if (error) throw error
+      setSetups((prev) => [...(data as PlaybookSetup[]), ...prev])
+      toast.success(`Loaded ${toInsert.length} system setup${toInsert.length !== 1 ? 's' : ''}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load setups')
+    } finally {
+      setLoadingSystem(false)
+    }
+  }
+
   async function handleDeleteSetup(id: string) {
     if (!confirm('Delete this setup?')) return
     const { error } = await supabase.from('playbook_setups').delete().eq('id', id)
@@ -137,13 +167,23 @@ export default function PlaybookPage() {
           <h1 className="text-2xl font-bold text-white">Playbook</h1>
           <p className="text-sm text-gray-400 mt-1">{setups.length} setups defined</p>
         </div>
-        <button
-          onClick={() => setAddModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition"
-        >
-          <Plus className="h-4 w-4" />
-          Add Setup
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleLoadSystemSetups}
+            disabled={loadingSystem}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+          >
+            <Download className="h-4 w-4" />
+            {loadingSystem ? 'Loading…' : 'Load System Setups'}
+          </button>
+          <button
+            onClick={() => setAddModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition"
+          >
+            <Plus className="h-4 w-4" />
+            Add Setup
+          </button>
+        </div>
       </div>
 
       {loading ? (

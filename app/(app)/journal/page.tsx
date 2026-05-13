@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Trade } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { parseTradovateCSV } from '@/lib/tradovate-parser'
 import { formatCurrency, getMoodEmoji, getGradeColor, getPnLColor, cn } from '@/lib/utils'
+import { computeTradeFlags, classifyWindow, ctTimeLabel } from '@/lib/trade-flags'
 import { Modal } from '@/components/ui/Modal'
 import TradeAnnotationForm from '@/components/journal/TradeAnnotationForm'
+import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import { Upload, Filter } from 'lucide-react'
+import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
 
 type Tab = 'log' | 'import'
 
@@ -17,7 +19,12 @@ export default function JournalPage() {
   const [tab, setTab] = useState<Tab>('log')
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
+  const [checklistTrade, setChecklistTrade] = useState<Trade | null>(null)
   const [annotatingTrade, setAnnotatingTrade] = useState<Trade | null>(null)
+  const [gateAnswers, setGateAnswers] = useState<GateAnswers | null>(null)
+  const [isRevengeFlagged, setIsRevengeFlagged] = useState(false)
+  const [lightboxTrade, setLightboxTrade] = useState<Trade | null>(null)
+  const [lightboxTab, setLightboxTab] = useState<'entry' | 'exit'>('entry')
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState('')
@@ -25,6 +32,7 @@ export default function JournalPage() {
   const [filterDirection, setFilterDirection] = useState<'all' | 'long' | 'short'>('all')
   const [filterGrade, setFilterGrade] = useState<'all' | 'A' | 'B' | 'C'>('all')
   const [filterMood, setFilterMood] = useState<string>('all')
+  const [filterInstrument, setFilterInstrument] = useState<string>('all')
 
   // Import state
   const [parsedTrades, setParsedTrades] = useState<ReturnType<typeof parseTradovateCSV>>([])
@@ -58,8 +66,19 @@ export default function JournalPage() {
     if (filterDirection !== 'all' && t.direction !== filterDirection) return false
     if (filterGrade !== 'all' && t.grade !== filterGrade) return false
     if (filterMood !== 'all' && t.mood !== filterMood) return false
+    if (filterInstrument !== 'all' && (t.instrument || 'ES') !== filterInstrument) return false
     return true
   })
+
+  // Precompute rule flags for every trade (deterministic, no API call).
+  const flagMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof computeTradeFlags>>()
+    for (const t of filteredTrades) {
+      const flags = computeTradeFlags(t, trades)
+      if (flags.length > 0) map.set(t.id, flags)
+    }
+    return map
+  }, [filteredTrades, trades])
 
   function handleCSVFile(file: File) {
     const reader = new FileReader()
@@ -123,6 +142,25 @@ export default function JournalPage() {
 
   function handleTradeSaved(updatedTrade: Trade) {
     setTrades((prev) => prev.map((t) => t.id === updatedTrade.id ? updatedTrade : t))
+    // Sync lightbox if it's showing the same trade
+    if (lightboxTrade?.id === updatedTrade.id) setLightboxTrade(updatedTrade)
+  }
+
+  function openLightbox(trade: Trade, tab: 'entry' | 'exit') {
+    setLightboxTrade(trade)
+    setLightboxTab(tab)
+  }
+
+  function handleGateComplete(answers: GateAnswers) {
+    setGateAnswers(answers)
+    setAnnotatingTrade(checklistTrade)
+    setChecklistTrade(null)
+  }
+
+  function handleAnnotateClose() {
+    setAnnotatingTrade(null)
+    setGateAnswers(null)
+    setIsRevengeFlagged(false)
   }
 
   return (
@@ -211,9 +249,20 @@ export default function JournalPage() {
                 <option key={m} value={m}>{getMoodEmoji(m)} {m}</option>
               ))}
             </select>
-            {(filterDateFrom || filterDateTo || filterDirection !== 'all' || filterGrade !== 'all' || filterMood !== 'all') && (
+            <select
+              value={filterInstrument}
+              onChange={(e) => setFilterInstrument(e.target.value)}
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="all">All Instruments</option>
+              <option value="ES">ES</option>
+              <option value="NQ">NQ</option>
+              <option value="MES">MES</option>
+              <option value="MNQ">MNQ</option>
+            </select>
+            {(filterDateFrom || filterDateTo || filterDirection !== 'all' || filterGrade !== 'all' || filterMood !== 'all' || filterInstrument !== 'all') && (
               <button
-                onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterDirection('all'); setFilterGrade('all'); setFilterMood('all') }}
+                onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterDirection('all'); setFilterGrade('all'); setFilterMood('all'); setFilterInstrument('all') }}
                 className="text-xs text-blue-400 hover:text-blue-300 transition"
               >
                 Clear filters
@@ -238,32 +287,74 @@ export default function JournalPage() {
                   <thead>
                     <tr className="border-b border-gray-700/50">
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Date</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Instr</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Time</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Dir</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Qty</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Entry</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Exit</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">P&L</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Gross</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Net</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Mood</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Grade</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Setup</th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Charts</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTrades.map((trade, i) => (
+                    {filteredTrades.map((trade, i) => {
+                      const flags = flagMap.get(trade.id) ?? []
+                      const hasCritical = flags.some((f) => f.severity === 'critical')
+                      const hasWarning = flags.some((f) => f.severity === 'warning')
+                      const hasFlags = flags.length > 0
+
+                      // Classify the entry window for time-cell coloring
+                      const ctLabel = ctTimeLabel(trade.entry_time)
+                      const ctMinsVal = ctLabel
+                        ? (() => { const [h, m] = ctLabel.split(':').map(Number); return h * 60 + m })()
+                        : null
+                      const windowStatus = ctMinsVal !== null ? classifyWindow(ctMinsVal) : 'unknown'
+                      const timeIsOk = windowStatus === 'primary' || windowStatus === 'continuation' || windowStatus === 'late' || windowStatus === 'secondary'
+
+                      return (
                       <tr
                         key={trade.id}
                         className={cn(
                           'border-b border-gray-700/30 hover:bg-gray-700/20 transition',
-                          i % 2 === 0 ? 'bg-transparent' : 'bg-gray-800/20'
+                          i % 2 === 0 ? 'bg-transparent' : 'bg-gray-800/20',
+                          hasCritical && 'bg-red-500/5',
+                          hasWarning && !hasCritical && 'bg-amber-500/5',
                         )}
                       >
                         <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                          {format(parseISO(trade.date), 'MM/dd/yy')}
+                          <div className="flex items-center gap-1.5">
+                            {hasFlags && (
+                              <span
+                                title={flags.map((f) => f.detail).join('\n')}
+                                className={cn(
+                                  'flex-shrink-0',
+                                  hasCritical ? 'text-red-400' : 'text-amber-400',
+                                )}
+                              >
+                                <AlertTriangle className="h-3 w-3" />
+                              </span>
+                            )}
+                            {format(parseISO(trade.date), 'MM/dd/yy')}
+                          </div>
                         </td>
-                        <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
-                          {format(parseISO(trade.entry_time), 'HH:mm')}
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-semibold text-blue-400/80">{trade.instrument || 'ES'}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs">
+                          <span
+                            className={cn(
+                              timeIsOk ? 'text-gray-400' : 'text-red-400 font-semibold',
+                            )}
+                            title={!timeIsOk ? `Outside approved window — ${windowStatus.replace('_', ' ')}` : undefined}
+                          >
+                            {format(parseISO(trade.entry_time), 'HH:mm')}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <span className={cn(
@@ -276,6 +367,9 @@ export default function JournalPage() {
                         <td className="px-4 py-3 text-right text-gray-300">{trade.quantity}</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono text-xs">{trade.entry_price.toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono text-xs">{trade.exit_price.toFixed(2)}</td>
+                        <td className={cn('px-4 py-3 text-right text-xs', getPnLColor(trade.gross_pnl))}>
+                          {formatCurrency(trade.gross_pnl)}
+                        </td>
                         <td className={cn('px-4 py-3 text-right font-semibold', getPnLColor(trade.net_pnl))}>
                           {formatCurrency(trade.net_pnl)}
                         </td>
@@ -291,19 +385,75 @@ export default function JournalPage() {
                             <span className="text-gray-600 text-xs">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-400 text-xs max-w-[100px] truncate">
-                          {trade.setup_tag || '—'}
+                        <td className="px-4 py-3 text-gray-400 text-xs max-w-[120px]">
+                          <div className="flex items-center gap-1.5">
+                            {trade.tags?.includes('news driven') && (
+                              <span
+                                className="h-2 w-2 rounded-full bg-amber-500 shrink-0 animate-pulse"
+                                title="News-driven trade — high-impact headline within 15 min of entry"
+                              />
+                            )}
+                            <span className="truncate">{trade.setup_tag || '—'}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {(trade.entry_chart_url || trade.exit_chart_url) ? (
+                            <div className="flex items-center justify-center gap-1">
+                              {trade.entry_chart_url && (
+                                <button
+                                  onClick={() => openLightbox(trade, 'entry')}
+                                  title="Entry chart"
+                                  className="group relative"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={trade.entry_chart_url}
+                                    alt="Entry chart"
+                                    className="h-7 w-11 object-cover rounded border border-gray-700 group-hover:border-blue-500/50 transition"
+                                  />
+                                </button>
+                              )}
+                              {trade.exit_chart_url && (
+                                <button
+                                  onClick={() => openLightbox(trade, 'exit')}
+                                  title="Exit chart"
+                                  className="group relative"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={trade.exit_chart_url}
+                                    alt="Exit chart"
+                                    className="h-7 w-11 object-cover rounded border border-gray-700 group-hover:border-blue-500/50 transition"
+                                  />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-700 text-xs">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
-                            onClick={() => setAnnotatingTrade(trade)}
+                            onClick={() => {
+                              const THREE_MIN = 3 * 60 * 1000
+                              const entryMs = new Date(trade.entry_time).getTime()
+                              const revengeDetected = trades.some(t => {
+                                if (t.id === trade.id || t.net_pnl >= 0) return false
+                                const exitMs = new Date(t.exit_time).getTime()
+                                const gap = entryMs - exitMs
+                                return gap >= 0 && gap <= THREE_MIN
+                              })
+                              setIsRevengeFlagged(revengeDetected)
+                              setChecklistTrade(trade)
+                            }}
                             className="text-xs text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/50 rounded px-2 py-1 transition"
                           >
                             Annotate
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -427,20 +577,143 @@ export default function JournalPage() {
         </div>
       )}
 
+      {/* Five-Word Gate modal */}
+      <Modal
+        open={!!checklistTrade}
+        onClose={() => setChecklistTrade(null)}
+        title="Bias · Setup · Trigger · Location · Risk"
+        className="max-w-md"
+      >
+        {checklistTrade && (
+          <FiveWordGateModal
+            trade={checklistTrade}
+            onComplete={handleGateComplete}
+            onCancel={() => setChecklistTrade(null)}
+          />
+        )}
+      </Modal>
+
       {/* Annotate Modal */}
       <Modal
         open={!!annotatingTrade}
-        onClose={() => setAnnotatingTrade(null)}
+        onClose={handleAnnotateClose}
         title={`Annotate Trade — ${annotatingTrade ? format(parseISO(annotatingTrade.date), 'MMM d, yyyy') : ''}`}
         className="max-w-xl"
       >
         {annotatingTrade && (
           <TradeAnnotationForm
             trade={annotatingTrade}
-            onClose={() => setAnnotatingTrade(null)}
+            onClose={handleAnnotateClose}
             onSaved={handleTradeSaved}
+            initialInPlan={gateAnswers?.inPlan}
+            isRevengeTrade={isRevengeFlagged}
+            gateAnswers={gateAnswers ?? undefined}
           />
         )}
+      </Modal>
+
+      {/* Chart Lightbox */}
+      <Modal
+        open={!!lightboxTrade}
+        onClose={() => setLightboxTrade(null)}
+        title="Trade Charts"
+        className="max-w-4xl"
+      >
+        {lightboxTrade && (() => {
+          const hasEntry = !!lightboxTrade.entry_chart_url
+          const hasExit = !!lightboxTrade.exit_chart_url
+          const hasBoth = hasEntry && hasExit
+          const activeUrl = lightboxTab === 'entry' ? lightboxTrade.entry_chart_url : lightboxTrade.exit_chart_url
+
+          return (
+            <div className="space-y-4">
+              {/* Tabs (only shown when both images exist) */}
+              {hasBoth && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setLightboxTab('entry')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition',
+                      lightboxTab === 'entry'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:text-white'
+                    )}
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    Entry Chart
+                  </button>
+                  <button
+                    onClick={() => setLightboxTab('exit')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition',
+                      lightboxTab === 'exit'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:text-white'
+                    )}
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    Exit Chart
+                  </button>
+                </div>
+              )}
+
+              {/* Full-size image */}
+              {activeUrl ? (
+                <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={activeUrl}
+                    alt={lightboxTab === 'entry' ? 'Entry chart' : 'Exit chart'}
+                    className="w-full rounded-xl border border-gray-700/50 max-h-[70vh] object-contain bg-gray-950"
+                  />
+
+                  {/* Prev / next arrows when both charts exist */}
+                  {hasBoth && (
+                    <>
+                      <button
+                        onClick={() => setLightboxTab(lightboxTab === 'entry' ? 'exit' : 'entry')}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-gray-900/80 text-gray-400 hover:text-white transition"
+                        title="Previous"
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => setLightboxTab(lightboxTab === 'entry' ? 'exit' : 'entry')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-gray-900/80 text-gray-400 hover:text-white transition"
+                        title="Next"
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="h-48 flex items-center justify-center text-gray-500 text-sm">
+                  No {lightboxTab} chart uploaded yet
+                </div>
+              )}
+
+              {/* Footer: label + open-in-new-tab */}
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  {lightboxTab === 'entry' ? 'Entry' : 'Exit'} chart
+                  {hasBoth && ` · ${lightboxTab === 'entry' ? '1' : '2'} of 2`}
+                </p>
+                {activeUrl && (
+                  <a
+                    href={activeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open full size
+                  </a>
+                )}
+              </div>
+            </div>
+          )
+        })()}
       </Modal>
     </div>
   )

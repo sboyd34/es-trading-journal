@@ -6,6 +6,7 @@ import { formatCurrency, getPnLColor, cn } from '@/lib/utils'
 interface StatsCardsProps {
   stats: DashboardStats
   todayPnL: number
+  todayGrossPnL: number
 }
 
 interface StatCardProps {
@@ -25,7 +26,7 @@ function StatCard({ label, value, valueColor, subtext }: StatCardProps) {
   )
 }
 
-export default function StatsCards({ stats, todayPnL }: StatsCardsProps) {
+export default function StatsCards({ stats, todayPnL, todayGrossPnL }: StatsCardsProps) {
   const streakLabel = stats.currentStreak >= 0
     ? `${stats.currentStreak}W streak`
     : `${Math.abs(stats.currentStreak)}L streak`
@@ -37,13 +38,13 @@ export default function StatsCards({ stats, todayPnL }: StatsCardsProps) {
         label="Total P&L"
         value={formatCurrency(stats.totalPnL)}
         valueColor={getPnLColor(stats.totalPnL)}
-        subtext="All time"
+        subtext={`Gross ${formatCurrency(stats.totalGrossPnL)}`}
       />
       <StatCard
         label="Today's P&L"
         value={formatCurrency(todayPnL)}
         valueColor={getPnLColor(todayPnL)}
-        subtext="Net"
+        subtext={`Gross ${formatCurrency(todayGrossPnL)}`}
       />
       <StatCard
         label="Win Rate"

@@ -38,30 +38,58 @@ export async function POST(request: NextRequest) {
 
     const typedTrades = trades as Trade[]
     const totalNetPnL = typedTrades.reduce((s, t) => s + t.net_pnl, 0)
+    const totalGrossPnL = typedTrades.reduce((s, t) => s + t.gross_pnl, 0)
+    const totalCommission = typedTrades.reduce((s, t) => s + t.commission, 0)
     const winners = typedTrades.filter((t) => t.net_pnl > 0)
     const losers = typedTrades.filter((t) => t.net_pnl <= 0)
 
     const tradesSummary = typedTrades.map((t, i) => {
-      return `Trade ${i + 1}: ${t.direction.toUpperCase()} ${t.quantity} contract(s) | Entry: ${t.entry_price} | Exit: ${t.exit_price} | Net P&L: $${t.net_pnl.toFixed(2)} | Mood: ${t.mood || 'untagged'} | Grade: ${t.grade || 'ungraded'} | Notes: ${t.notes || 'none'}`
+      const entryTimeCT = new Date(t.entry_time).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hour12: false })
+      return `Trade ${i + 1}: ${t.direction.toUpperCase()} ${t.quantity}x ${t.instrument || 'ES'} | Entry: ${t.entry_price} at ${entryTimeCT} CT | Exit: ${t.exit_price} | Gross P&L: $${t.gross_pnl.toFixed(2)} | Commission: $${t.commission.toFixed(2)} | Net P&L: $${t.net_pnl.toFixed(2)} | Setup: ${t.setup_tag || t.trade_setup || 'untagged'} | Bias: ${t.trade_bias || 'not recorded'} | Location: ${t.trade_location || 'not recorded'} | Mood: ${t.mood || 'untagged'} | Grade: ${t.grade || 'ungraded'} | Notes: ${t.notes || 'none'}`
     }).join('\n')
 
-    const systemPrompt = `You are an expert ES futures trading coach analyzing a trader's trading day. Your role is to provide honest, constructive, specific feedback that helps the trader improve.
+    const systemPrompt = `You are an expert ES futures trading coach. This trader uses a strict rules-based system — evaluate every trade against it. Be direct and specific. Never give generic feedback.
 
-Generate an end-of-day summary in the following JSON format. Be specific and reference actual trade data. Avoid generic feedback. Be direct but supportive.
+TRADING SYSTEM RULES:
+Core Model: 1H Bias → 15m Setup → 5m Trigger
+- Bull bias → longs only; Bear bias → shorts only; Neutral → retests only or no trade
+
+Approved Time Windows (CT): 08:45–09:30 ORB primary; 09:30–10:30 continuation; 10:30–11:00 A+ only; 12:30–14:00 secondary (3 gates required); ALL other times = no trade.
+
+Setup Priority: (1) ORB Break (2) TTM Squeeze (3) AVWAP Bounce (4) FVG Bounce (5) Divergence/Trendline Break (alert only).
+
+Entry Rule: Break → Retest → Confirm → Enter. NEVER anticipate, blind-touch, chase, or enter on bubble/fire alone.
+
+Approved Locations: ORH/ORL, VWAP/AVWAP, VAH/VAL, PDH/PDL, overnight high/low, prior swing extremes, fresh supply/demand.
+BANNED Locations: POC, mid-value, overlapping candles, obvious chop.
+
+Hard Operating Rule: Bias. Setup. Trigger. Location. Risk. — all five must be stated before entering. If any is missing = rule violation = C grade minimum.
+
+Grade Rubric:
+A: All criteria met — bias clear, correct setup, approved location, Break→Retest→Confirm→Enter, approved time window, emotionally flat
+B: One minor deviation (slightly early, Tier 2 location without extra confirm, small size)
+C: ANY of: POC/chop/mid-value entry, wrong time window, wrong direction vs bias, chased candle, entered on fire alone, FOMO/revenge state, blind-touch
+
+For each trade, explicitly state:
+1. Was the time window approved?
+2. Does the entry location match approved locations (call out if it's a banned location)?
+3. Was the entry sequence (Break→Retest→Confirm→Enter) followed?
+4. Does the direction match the 1H bias?
+5. Which of the 5 setups was this? Is the grade appropriate per the rubric?
 
 Return ONLY valid JSON with these exact keys:
 {
-  "what_happened": "Factual summary of the trading day — market conditions, how many trades, overall outcome",
-  "trades_review": "Trade-by-trade analysis highlighting what was executed well and what wasn't",
-  "emotional_state": "Assessment of the trader's emotional state based on mood tags and trade patterns",
-  "mistakes": "Specific mistakes made today — be direct and honest",
-  "wins": "Specific things done well today — genuine positives, not platitudes",
-  "lesson": "The single most important lesson from today's trading",
-  "tomorrow_focus": "1-2 specific, actionable things to focus on tomorrow"
+  "what_happened": "Factual summary — time windows used, P&L outcome, day structure",
+  "trades_review": "Trade-by-trade system evaluation — call out each rule followed or violated with specific references",
+  "emotional_state": "Assessment based on mood tags, trade sequence, and any revenge/FOMO patterns",
+  "mistakes": "Specific rule violations — name the exact rule broken (time window, location, entry sequence, bias alignment)",
+  "wins": "Specific rules followed correctly — genuine positives with exact rule references",
+  "lesson": "The single most important system rule to focus on",
+  "tomorrow_focus": "1-2 specific rule-based behaviors to enforce tomorrow"
 }`
 
     const userMessage = `Date: ${date}
-Total P&L: $${totalNetPnL.toFixed(2)}
+Gross P&L: $${totalGrossPnL.toFixed(2)} | Commission: $${totalCommission.toFixed(2)} | Net P&L: $${totalNetPnL.toFixed(2)}
 Trades: ${typedTrades.length} (${winners.length} winners, ${losers.length} losers)
 Win rate: ${((winners.length / typedTrades.length) * 100).toFixed(1)}%
 
@@ -86,7 +114,12 @@ Please generate my end-of-day summary.`
 
     let summary
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+      const cleaned = responseText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim()
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('No JSON found in response')
       summary = JSON.parse(jsonMatch[0])
     } catch {
