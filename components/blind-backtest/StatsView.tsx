@@ -113,6 +113,48 @@ export default function StatsView({ trades, loading }: Props) {
     })
   }, [trades])
 
+  // MFE / MAE aggregates (winners' heat, losers' missed room, capture rate)
+  const excursion = useMemo(() => {
+    const toR = (t: BlindBacktestTrade, val: number): number | null => {
+      const dist = Math.abs(t.entry_price - t.stop_price)
+      return dist > 0 ? val / dist : null
+    }
+    const tracked = trades.filter((t) => t.mfe != null && t.mae != null)
+    const winners = tracked.filter((t) => t.outcome === 'WIN' && t.r_multiple != null)
+    const losers  = tracked.filter((t) => t.outcome === 'LOSS')
+
+    const winnerMaeR = winners.map((t) => toR(t, t.mae!)).filter((r): r is number => r != null)
+    const winnerMfeR = winners.map((t) => toR(t, t.mfe!)).filter((r): r is number => r != null)
+    const winnerR    = winners.map((t) => t.r_multiple!).filter((r) => r > 0)
+    const loserMfeR  = losers.map((t) => toR(t, t.mfe!)).filter((r): r is number => r != null)
+
+    const avg = (arr: number[]) => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null
+
+    const avgWinnerMae = avg(winnerMaeR)
+    const avgLoserMfe  = avg(loserMfeR)
+    const avgWinnerR   = avg(winnerR)
+    const avgWinnerMfe = avg(winnerMfeR)
+    const captureRate  = avgWinnerR != null && avgWinnerMfe != null && avgWinnerMfe > 0
+      ? avgWinnerR / avgWinnerMfe : null
+
+    // Winners whose trade had >50% more available room than they took.
+    const winnersWithRoom = winners.filter((t) => {
+      const r = t.r_multiple!
+      const mfeR = toR(t, t.mfe!)
+      return mfeR != null && r > 0 && mfeR > r * 1.5
+    }).length
+
+    return {
+      hasData: tracked.length > 0,
+      winnerCount: winners.length,
+      loserCount: losers.length,
+      avgWinnerMae,
+      avgLoserMfe,
+      captureRate,
+      winnersWithRoom,
+    }
+  }, [trades])
+
   // AI vs Self grade agreement
   const gradeAgreement = useMemo(() => {
     const both = trades.filter((t) => t.ai_grade && t.self_grade)
@@ -179,6 +221,53 @@ export default function StatsView({ trades, loading }: Props) {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Trade Lifetime — MFE / MAE — silent if no excursion data yet */}
+      {excursion.hasData && (excursion.winnerCount + excursion.loserCount > 0) && (
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-gray-200">Trade Lifetime</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Excursion analysis — how much heat winners took, how much room losers gave back</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-gray-900/40 rounded-lg p-4">
+              <p className="text-xs text-gray-500 mb-1">Avg MAE on winners</p>
+              <p className="text-2xl font-bold text-red-400">
+                {excursion.avgWinnerMae != null ? `−${excursion.avgWinnerMae.toFixed(2)}R` : '—'}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {excursion.winnerCount} winner{excursion.winnerCount !== 1 ? 's' : ''} · smaller = cleaner entries
+              </p>
+            </div>
+            <div className="bg-gray-900/40 rounded-lg p-4">
+              <p className="text-xs text-gray-500 mb-1">Avg MFE on losers</p>
+              <p className="text-2xl font-bold text-emerald-400">
+                {excursion.avgLoserMfe != null ? `+${excursion.avgLoserMfe.toFixed(2)}R` : '—'}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {excursion.loserCount} loser{excursion.loserCount !== 1 ? 's' : ''} · larger = move stop to BE earlier
+              </p>
+            </div>
+            <div className="bg-gray-900/40 rounded-lg p-4">
+              <p className="text-xs text-gray-500 mb-1">Winner capture rate</p>
+              <p className={cn('text-2xl font-bold',
+                excursion.captureRate != null
+                  ? excursion.captureRate >= 0.75 ? 'text-emerald-400'
+                    : excursion.captureRate >= 0.5 ? 'text-yellow-400'
+                    : 'text-red-400'
+                  : 'text-gray-500')}>
+                {excursion.captureRate != null ? `${(excursion.captureRate * 100).toFixed(0)}%` : '—'}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Realized R ÷ available R · target tightness</p>
+            </div>
+          </div>
+          {excursion.winnerCount > 0 && excursion.winnersWithRoom > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-700/50 text-xs text-gray-400">
+              <span className="font-semibold text-yellow-400">{excursion.winnersWithRoom}</span> of {excursion.winnerCount} winner{excursion.winnerCount !== 1 ? 's' : ''} ran &gt;1.5× your realized R — your targets may be too tight.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* By Setup */}
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">

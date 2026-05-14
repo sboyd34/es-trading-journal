@@ -30,12 +30,15 @@ export async function POST(request: NextRequest) {
       outcome,
       gross_pnl,
       r_multiple,
+      mfe,
+      mae,
       ai_grade,
       ai_feedback,
       self_grade,
       mood,
       notes,
       reflection,
+      chart_url,
     } = body
 
     const { data, error } = await supabase
@@ -60,12 +63,15 @@ export async function POST(request: NextRequest) {
         outcome,
         gross_pnl,
         r_multiple,
+        mfe,
+        mae,
         ai_grade,
         ai_feedback,
         self_grade,
         mood,
         notes,
         reflection,
+        chart_url,
       })
       .select()
       .single()

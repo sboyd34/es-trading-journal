@@ -4,12 +4,16 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import toast from 'react-hot-toast'
 import { cn, formatCurrency } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import { BlindBacktestSession, BlindBacktestTrade } from '@/types'
 import {
   Settings, Play, ChevronRight, Trophy, TrendingUp, TrendingDown,
-  Minus, Brain, RefreshCw, Target, AlertCircle, Eye,
+  Minus, Brain, RefreshCw, Target, AlertCircle, Eye, Camera,
 } from 'lucide-react'
 import type { Candle } from './CandlestickChart'
+import ImageUploadSlot from '@/components/ui/ImageUploadSlot'
+
+const CHART_BUCKET = 'trade-charts'
 
 const CandlestickChart = dynamic(() => import('./CandlestickChart'), { ssr: false })
 const TradeReplayModal = dynamic(() => import('./TradeReplayModal'), { ssr: false })
@@ -54,6 +58,8 @@ interface OutcomeData {
   exitPrice: number
   grossPnl: number
   rMultiple: number
+  mfe: number  // max favorable excursion, in price points (>= 0)
+  mae: number  // max adverse excursion, in price points (>= 0)
 }
 
 interface AiGradeResult {
@@ -125,29 +131,35 @@ function calculateOutcome(
   contractType: string,
 ): OutcomeData {
   const pv = contractType === 'MES' ? 5 : 50
+  let mfe = 0
+  let mae = 0
 
   for (const c of afterCutoff) {
     if (dir === 'long') {
+      mfe = Math.max(mfe, c.h - entry)
+      mae = Math.max(mae, entry - c.l)
       if (c.l <= stop) {
         const pnl = (stop - entry) * pv
         const risk = Math.abs(entry - stop) * pv
-        return { outcome: 'LOSS', exitPrice: stop, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : -1 }
+        return { outcome: 'LOSS', exitPrice: stop, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : -1, mfe, mae }
       }
       if (c.h >= target) {
         const pnl = (target - entry) * pv
         const risk = Math.abs(entry - stop) * pv
-        return { outcome: 'WIN', exitPrice: target, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : 1 }
+        return { outcome: 'WIN', exitPrice: target, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : 1, mfe, mae }
       }
     } else {
+      mfe = Math.max(mfe, entry - c.l)
+      mae = Math.max(mae, c.h - entry)
       if (c.h >= stop) {
         const pnl = (entry - stop) * pv
         const risk = Math.abs(stop - entry) * pv
-        return { outcome: 'LOSS', exitPrice: stop, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : -1 }
+        return { outcome: 'LOSS', exitPrice: stop, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : -1, mfe, mae }
       }
       if (c.l <= target) {
         const pnl = (entry - target) * pv
         const risk = Math.abs(stop - entry) * pv
-        return { outcome: 'WIN', exitPrice: target, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : 1 }
+        return { outcome: 'WIN', exitPrice: target, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : 1, mfe, mae }
       }
     }
   }
@@ -155,7 +167,7 @@ function calculateOutcome(
   const lastClose = afterCutoff[afterCutoff.length - 1]?.c ?? entry
   const pnl = dir === 'long' ? (lastClose - entry) * pv : (entry - lastClose) * pv
   const risk = Math.abs(entry - stop) * pv
-  return { outcome: 'SCRATCH', exitPrice: lastClose, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : 0 }
+  return { outcome: 'SCRATCH', exitPrice: lastClose, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : 0, mfe, mae }
 }
 
 function gradeColor(g: string | null) {
@@ -212,6 +224,11 @@ export default function BlindBacktestClient() {
   const [gradeMood, setGradeMood] = useState('')
   const [gradeNotes, setGradeNotes] = useState('')
   const [gradeReflection, setGradeReflection] = useState('')
+  const [gradeChartUrl, setGradeChartUrl] = useState<string | null>(null)
+  const [gradeChartUploading, setGradeChartUploading] = useState(false)
+  const [gradeChartRef, setGradeChartRef] = useState<string>(() =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`
+  )
   const [saving, setSaving] = useState(false)
 
   // Complete phase
@@ -400,12 +417,15 @@ export default function BlindBacktestClient() {
           outcome:           outcome.outcome,
           gross_pnl:         outcome.grossPnl,
           r_multiple:        outcome.rMultiple,
+          mfe:               outcome.mfe,
+          mae:               outcome.mae,
           ai_grade:          aiGrade?.grade ?? null,
           ai_feedback:       aiGrade ? `${aiGrade.well} ${aiGrade.improve}` : null,
           self_grade:        selfGrade || null,
           mood:              gradeMood || null,
           notes:             gradeNotes || null,
           reflection:        gradeReflection || null,
+          chart_url:         gradeChartUrl ? gradeChartUrl.split('?')[0] : null,
         }),
       })
       const data = await res.json()
@@ -441,7 +461,54 @@ export default function BlindBacktestClient() {
     setGradeMood('')
     setGradeNotes('')
     setGradeReflection('')
+    setGradeChartUrl(null)
+    setGradeChartUploading(false)
+    setGradeChartRef(
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`
+    )
     setChartData(null)
+  }
+
+  // ── Grading chart upload ─────────────────────────────────────────────────
+
+  async function handleGradeChartUpload(file: File) {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10 MB')
+      return
+    }
+    setGradeChartUploading(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast.error('Not signed in')
+        return
+      }
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const path = `${user.id}/blind/${gradeChartRef}/chart.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from(CHART_BUCKET)
+        .upload(path, file, { upsert: true, contentType: file.type })
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from(CHART_BUCKET).getPublicUrl(path)
+      setGradeChartUrl(`${data.publicUrl}?t=${Date.now()}`)
+      toast.success('Chart uploaded')
+    } catch (err) {
+      toast.error('Upload failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally {
+      setGradeChartUploading(false)
+    }
+  }
+
+  async function handleGradeChartRemove() {
+    if (!gradeChartUrl) return
+    const supabase = createClient()
+    const storagePath = gradeChartUrl.split(`/${CHART_BUCKET}/`)[1]?.split('?')[0]
+    if (storagePath) {
+      await supabase.storage.from(CHART_BUCKET).remove([storagePath])
+    }
+    setGradeChartUrl(null)
+    toast.success('Chart removed')
   }
 
   async function finalizeSession(trades: BlindBacktestTrade[]) {
@@ -774,6 +841,11 @@ export default function BlindBacktestClient() {
           trade={replayTrade}
           open={replayTrade !== null}
           onClose={() => setReplayTrade(null)}
+          onUpdated={(updated) => {
+            setReplayTrade(updated)
+            setExpandedTrades((ts) => ts.map((t) => (t.id === updated.id ? updated : t)))
+            setAllTrades((ts) => ts.map((t) => (t.id === updated.id ? updated : t)))
+          }}
         />
       </div>
     )
@@ -1038,6 +1110,9 @@ export default function BlindBacktestClient() {
     const stop   = parseFloat(form.stopPrice)
     const target = parseFloat(form.targetPrice)
     const cutoffCandle = chartData.blindCandles[chartData.blindCandles.length - 1]
+    const stopDist = Math.abs(entry - stop)
+    const mfeR = stopDist > 0 ? outcome.mfe / stopDist : 0
+    const maeR = stopDist > 0 ? outcome.mae / stopDist : 0
 
     return (
       <div className="space-y-4">
@@ -1060,7 +1135,7 @@ export default function BlindBacktestClient() {
               outcome.outcome === 'LOSS' ? 'text-red-400' : 'text-gray-300')}>
               {outcome.outcome}
             </p>
-            <div className="flex gap-6 mt-1">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1">
               <span className="text-sm text-gray-400">
                 P&L: <span className={cn('font-bold', outcome.grossPnl >= 0 ? 'text-emerald-400' : 'text-red-400')}>{formatCurrency(outcome.grossPnl)}</span>
               </span>
@@ -1068,6 +1143,12 @@ export default function BlindBacktestClient() {
                 R: <span className={cn('font-bold', outcome.rMultiple >= 0 ? 'text-emerald-400' : 'text-red-400')}>
                   {outcome.rMultiple > 0 ? '+' : ''}{outcome.rMultiple.toFixed(2)}R
                 </span>
+              </span>
+              <span className="text-sm text-gray-400">
+                MFE: <span className="font-bold text-emerald-400">+{mfeR.toFixed(2)}R</span>
+              </span>
+              <span className="text-sm text-gray-400">
+                MAE: <span className="font-bold text-red-400">−{maeR.toFixed(2)}R</span>
               </span>
               <span className="text-sm text-gray-500">Exit: {outcome.exitPrice.toFixed(2)}</span>
             </div>
@@ -1203,6 +1284,20 @@ export default function BlindBacktestClient() {
             <textarea value={gradeReflection} onChange={(e) => setGradeReflection(e.target.value)} rows={2}
               placeholder="Reflection on process and execution…"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 resize-none" />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Camera className="h-3.5 w-3.5 text-gray-400" />
+              <label className="text-xs font-medium text-gray-400">Annotated Chart (optional)</label>
+            </div>
+            <ImageUploadSlot
+              label=""
+              currentUrl={gradeChartUrl}
+              uploading={gradeChartUploading}
+              onFile={handleGradeChartUpload}
+              onClear={handleGradeChartRemove}
+            />
           </div>
         </div>
 

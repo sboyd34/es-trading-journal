@@ -1,19 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
+import toast from 'react-hot-toast'
 import { Modal } from '@/components/ui/Modal'
+import { createClient } from '@/lib/supabase/client'
 import { BlindBacktestTrade } from '@/types'
 import { cn, formatCurrency } from '@/lib/utils'
-import { RefreshCw, AlertCircle, Trophy, TrendingDown, Minus, Brain } from 'lucide-react'
+import { RefreshCw, AlertCircle, Trophy, TrendingDown, Minus, Brain, Camera } from 'lucide-react'
 import type { Candle } from './CandlestickChart'
+import ImageUploadSlot from '@/components/ui/ImageUploadSlot'
 
 const CandlestickChart = dynamic(() => import('./CandlestickChart'), { ssr: false })
+const CHART_BUCKET = 'trade-charts'
 
 interface Props {
   trade: BlindBacktestTrade | null
   open: boolean
   onClose: () => void
+  onUpdated?: (trade: BlindBacktestTrade) => void
 }
 
 interface ChartResp {
@@ -32,17 +37,20 @@ function gradeBg(g: string | null) {
   return 'bg-gray-700/50 text-gray-500'
 }
 
-export default function TradeReplayModal({ trade, open, onClose }: Props) {
+export default function TradeReplayModal({ trade, open, onClose, onUpdated }: Props) {
   const [chart, setChart] = useState<ChartResp | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showBlind, setShowBlind] = useState(false)
+  const [chartUrl, setChartUrl] = useState<string | null>(null)
+  const [uploadingChart, setUploadingChart] = useState(false)
 
   useEffect(() => {
     if (!open || !trade) return
     setChart(null)
     setError(null)
     setShowBlind(false)
+    setChartUrl(trade.chart_url ?? null)
     setLoading(true)
     const params = new URLSearchParams({
       date: trade.historical_date,
@@ -58,10 +66,97 @@ export default function TradeReplayModal({ trade, open, onClose }: Props) {
       .finally(() => setLoading(false))
   }, [open, trade])
 
+  async function persistChartUrl(nextUrl: string | null) {
+    if (!trade) return
+    try {
+      const res = await fetch(`/api/blind-backtest/trades/${trade.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chart_url: nextUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update trade')
+      if (data.trade && onUpdated) onUpdated(data.trade as BlindBacktestTrade)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save chart URL')
+    }
+  }
+
+  async function handleUploadChart(file: File) {
+    if (!trade) return
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10 MB')
+      return
+    }
+    setUploadingChart(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast.error('Not signed in')
+        return
+      }
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const path = `${user.id}/blind/${trade.id}/chart.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from(CHART_BUCKET)
+        .upload(path, file, { upsert: true, contentType: file.type })
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from(CHART_BUCKET).getPublicUrl(path)
+      const bustedUrl = `${data.publicUrl}?t=${Date.now()}`
+      setChartUrl(bustedUrl)
+      await persistChartUrl(bustedUrl.split('?')[0])
+      toast.success('Chart uploaded')
+    } catch (err) {
+      toast.error('Upload failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally {
+      setUploadingChart(false)
+    }
+  }
+
+  async function handleRemoveChart() {
+    if (!chartUrl) return
+    const supabase = createClient()
+    const storagePath = chartUrl.split(`/${CHART_BUCKET}/`)[1]?.split('?')[0]
+    if (storagePath) {
+      await supabase.storage.from(CHART_BUCKET).remove([storagePath])
+    }
+    setChartUrl(null)
+    await persistChartUrl(null)
+    toast.success('Chart removed')
+  }
+
+  const excursion = useMemo(() => {
+    if (!trade) return null
+    if (trade.mfe != null && trade.mae != null) {
+      return { mfe: trade.mfe, mae: trade.mae }
+    }
+    if (!chart) return null
+    // Fallback for trades saved before MFE/MAE was tracked: replay the bars.
+    const afterCutoff = chart.fullCandles.slice(chart.cutoffIndex + 1)
+    const { entry_price: entry, stop_price: stop, target_price: target, direction } = trade
+    let mfe = 0, mae = 0
+    for (const c of afterCutoff) {
+      if (direction === 'long') {
+        mfe = Math.max(mfe, c.h - entry)
+        mae = Math.max(mae, entry - c.l)
+        if (c.l <= stop || c.h >= target) break
+      } else {
+        mfe = Math.max(mfe, entry - c.l)
+        mae = Math.max(mae, c.h - entry)
+        if (c.h >= stop || c.l <= target) break
+      }
+    }
+    return { mfe, mae }
+  }, [trade, chart])
+
   if (!trade) return null
 
   const cutoffCandle = chart?.blindCandles[chart.blindCandles.length - 1]
   const displayCandles = showBlind ? (chart?.blindCandles ?? []) : (chart?.fullCandles ?? [])
+  const stopDist = Math.abs(trade.entry_price - trade.stop_price)
+  const mfeR = excursion && stopDist > 0 ? excursion.mfe / stopDist : null
+  const maeR = excursion && stopDist > 0 ? excursion.mae / stopDist : null
 
   return (
     <Modal open={open} onClose={onClose} title="Trade Replay" className="max-w-4xl">
@@ -100,6 +195,18 @@ export default function TradeReplayModal({ trade, open, onClose }: Props) {
                 <p className={cn('font-bold', trade.r_multiple >= 0 ? 'text-emerald-400' : 'text-red-400')}>
                   {trade.r_multiple > 0 ? '+' : ''}{trade.r_multiple.toFixed(2)}R
                 </p>
+              </div>
+            )}
+            {mfeR != null && (
+              <div className="text-right">
+                <p className="text-xs text-gray-500">MFE</p>
+                <p className="font-bold text-emerald-400">+{mfeR.toFixed(2)}R</p>
+              </div>
+            )}
+            {maeR != null && (
+              <div className="text-right">
+                <p className="text-xs text-gray-500">MAE</p>
+                <p className="font-bold text-red-400">−{maeR.toFixed(2)}R</p>
               </div>
             )}
             {trade.ai_grade && (
@@ -154,6 +261,22 @@ export default function TradeReplayModal({ trade, open, onClose }: Props) {
             />
           </div>
         )}
+
+        {/* Your annotated chart */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Camera className="h-3.5 w-3.5 text-gray-400" />
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Your Annotated Chart</h3>
+          </div>
+          <ImageUploadSlot
+            label=""
+            currentUrl={chartUrl}
+            uploading={uploadingChart}
+            onFile={handleUploadChart}
+            onClear={handleRemoveChart}
+            heightClass="h-48"
+          />
+        </div>
 
         {/* Plan summary */}
         <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4">

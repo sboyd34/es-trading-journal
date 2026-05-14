@@ -203,11 +203,14 @@ export interface BlindBacktestTrade {
   outcome: 'WIN' | 'LOSS' | 'SCRATCH' | null
   gross_pnl: number | null
   r_multiple: number | null
+  mfe: number | null
+  mae: number | null
   ai_grade: 'A' | 'B' | 'C' | null
   ai_feedback: string | null
   self_grade: 'A' | 'B' | 'C' | null
   mood: string | null
   notes: string | null
   reflection: string | null
+  chart_url: string | null
   created_at: string
 }

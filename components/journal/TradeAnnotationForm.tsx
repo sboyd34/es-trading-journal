@@ -5,9 +5,10 @@ import { Trade } from '@/types'
 import { cn, getMoodEmoji, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
-import { Mic, Square, Camera, Loader2, X, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
+import { Mic, Square, Camera, ChevronDown, ChevronUp } from 'lucide-react'
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
 import type { GateAnswers } from '@/components/journal/FiveWordGateModal'
+import ImageUploadSlot from '@/components/ui/ImageUploadSlot'
 
 interface TradeAnnotationFormProps {
   trade: Trade
@@ -23,91 +24,6 @@ interface TradeAnnotationFormProps {
 const MOODS = ['calm', 'confident', 'anxious', 'FOMO', 'revenge', 'hesitant', 'bored', 'overconfident'] as const
 const GRADES = ['A', 'B', 'C'] as const
 const BUCKET = 'trade-charts'
-
-// ─── Image upload slot ────────────────────────────────────────────────────────
-
-function ImageUploadSlot({
-  label,
-  currentUrl,
-  uploading,
-  onFile,
-  onClear,
-}: {
-  label: string
-  currentUrl: string | null
-  uploading: boolean
-  onFile: (file: File) => void
-  onClear: () => void
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  return (
-    <div>
-      <p className="text-xs font-medium text-gray-400 mb-1.5">{label}</p>
-      {currentUrl ? (
-        <div className="relative group rounded-lg overflow-hidden border border-gray-700">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={currentUrl}
-            alt={label}
-            className="w-full h-28 object-cover"
-          />
-          <div className="absolute inset-0 bg-gray-900/0 group-hover:bg-gray-900/40 transition flex items-start justify-end gap-1 p-1">
-            <a
-              href={currentUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="p-1 rounded-full bg-gray-900/80 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition"
-              title="Open full size"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-            <button
-              type="button"
-              onClick={onClear}
-              className="p-1 rounded-full bg-gray-900/80 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
-              title="Remove"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="w-full h-28 border-2 border-dashed border-gray-700 hover:border-gray-500 rounded-lg flex flex-col items-center justify-center gap-1.5 text-gray-500 hover:text-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {uploading ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-xs">Uploading…</span>
-            </>
-          ) : (
-            <>
-              <Camera className="h-5 w-5" />
-              <span className="text-xs">Upload chart</span>
-              <span className="text-[10px] text-gray-600">or camera roll on mobile</span>
-            </>
-          )}
-        </button>
-      )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) onFile(file)
-          e.target.value = ''
-        }}
-      />
-    </div>
-  )
-}
 
 // ─── Main form ────────────────────────────────────────────────────────────────
 
