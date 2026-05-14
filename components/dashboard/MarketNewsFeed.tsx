@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Newspaper, ExternalLink, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
+import { Newspaper, ExternalLink, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface NewsArticle {
@@ -78,7 +78,9 @@ interface Props {
 
 export default function MarketNewsFeed({ onMacroEvent }: Props) {
   const [articles, setArticles] = useState<NewsArticle[]>([])
+  const [newIds, setNewIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [isLive, setIsLive] = useState(false)
@@ -87,6 +89,7 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastFetchRef = useRef<number>(0)
   const macroRef = useRef(false)
+  const prevIdsRef = useRef<Set<string>>(new Set())
 
   // Collapse by default on mobile
   useEffect(() => {
@@ -95,9 +98,10 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
     }
   }, [])
 
-  const fetchNews = useCallback(async () => {
+  const fetchNews = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true)
     try {
-      const res = await fetch('/api/news?limit=5&hours=24')
+      const res = await fetch('/api/news?limit=15&hours=24')
       if (!res.ok) throw new Error('fetch failed')
       const data = await res.json()
       if (data.error && !data.articles?.length) {
@@ -105,6 +109,15 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
         return
       }
       const fetched: NewsArticle[] = data.articles || []
+
+      // Flag articles that weren't in the previous fetch
+      const fresh = new Set(fetched.filter((a) => !prevIdsRef.current.has(a.id)).map((a) => a.id))
+      if (fresh.size > 0) {
+        setNewIds(fresh)
+        setTimeout(() => setNewIds(new Set()), 4000)
+      }
+      prevIdsRef.current = new Set(fetched.map((a) => a.id))
+
       setArticles(fetched)
       setLastUpdated(new Date())
       setError(null)
@@ -128,6 +141,7 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
       setError('News temporarily unavailable')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [onMacroEvent])
 
@@ -137,14 +151,14 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
     function tick() {
       const inHours = isNewsMarketHours()
       setIsLive(inHours)
-      const requiredInterval = inHours ? 60_000 : 5 * 60_000
+      const requiredInterval = inHours ? 30_000 : 5 * 60_000
       if (Date.now() - lastFetchRef.current >= requiredInterval) {
         fetchNews()
       }
     }
 
-    // Poll every minute; fetchNews only fires when interval elapsed
-    intervalRef.current = setInterval(tick, 60_000)
+    // Poll every 15s; fetchNews fires only when its own interval has elapsed
+    intervalRef.current = setInterval(tick, 15_000)
     setIsLive(isNewsMarketHours())
 
     return () => {
@@ -166,12 +180,20 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {lastUpdated && (
             <span className="text-xs text-gray-500 hidden sm:block">
-              Updated {formatRelative(lastUpdated.toISOString())}
+              {formatRelative(lastUpdated.toISOString())}
             </span>
           )}
+          <button
+            onClick={() => fetchNews(true)}
+            disabled={refreshing}
+            className="p-1 rounded text-gray-500 hover:text-gray-300 transition disabled:opacity-40"
+            aria-label="Refresh news"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+          </button>
           <button
             onClick={() => setCollapsed((c) => !c)}
             className="text-gray-500 hover:text-gray-300 transition md:hidden"
@@ -193,7 +215,7 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
       )}
 
       {/* Body — hidden on mobile when collapsed */}
-      <div className={cn('divide-y divide-gray-700/30', collapsed ? 'hidden md:block' : 'block')}>
+      <div className={cn(collapsed ? 'hidden md:block' : 'block')}>
         {loading ? (
           <div className="px-4 py-8 text-center text-xs text-gray-500">Loading news...</div>
         ) : error ? (
@@ -201,32 +223,37 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
         ) : articles.length === 0 ? (
           <div className="px-4 py-8 text-center text-xs text-gray-500">No recent headlines</div>
         ) : (
-          articles.map((article) => (
-            <a
-              key={article.id}
-              href={article.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-start gap-3 px-4 py-3.5 hover:bg-gray-700/20 transition group"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-200 font-medium leading-snug line-clamp-2 group-hover:text-white transition">
-                  {article.title}
-                </p>
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-xs text-gray-500">{article.source}</span>
-                  <span className="text-gray-600">·</span>
-                  <span className="text-xs text-gray-500">{formatRelative(article.publishedAt)}</span>
+          <div className="overflow-y-auto divide-y divide-gray-700/30" style={{ maxHeight: '420px' }}>
+            {articles.map((article) => (
+              <a
+                key={article.id}
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  'flex items-start gap-3 px-4 py-3.5 hover:bg-gray-700/20 transition group',
+                  newIds.has(article.id) && 'bg-amber-500/5 animate-pulse-once',
+                )}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-200 font-medium leading-snug line-clamp-2 group-hover:text-white transition">
+                    {article.title}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-xs text-gray-500">{article.source}</span>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-xs text-gray-500">{formatRelative(article.publishedAt)}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 pt-0.5">
-                <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide', IMPACT_BADGE[article.impact])}>
-                  {article.impact}
-                </span>
-                <ExternalLink className="h-3.5 w-3.5 text-gray-600 group-hover:text-gray-400 transition" />
-              </div>
-            </a>
-          ))
+                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                  <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide', IMPACT_BADGE[article.impact])}>
+                    {article.impact}
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 text-gray-600 group-hover:text-gray-400 transition" />
+                </div>
+              </a>
+            ))}
+          </div>
         )}
       </div>
     </div>
