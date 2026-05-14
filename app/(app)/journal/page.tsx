@@ -587,6 +587,7 @@ export default function JournalPage() {
         {checklistTrade && (
           <FiveWordGateModal
             trade={checklistTrade}
+            trades={trades}
             onComplete={handleGateComplete}
             onCancel={() => setChecklistTrade(null)}
           />

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Trade } from '@/types'
 import { cn, formatCurrency } from '@/lib/utils'
-import { ShieldCheck } from 'lucide-react'
+import { ShieldCheck, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { SYSTEM_SETUPS, SYSTEM_LOCATIONS } from '@/lib/trading-system'
+import { classifyWindow } from '@/lib/trade-flags'
 
 export interface GateAnswers {
   bias: 'Bull' | 'Bear' | 'Neutral'
@@ -17,11 +18,41 @@ export interface GateAnswers {
 
 interface FiveWordGateModalProps {
   trade?: Trade
+  trades?: Trade[]
   onComplete: (answers: GateAnswers) => void
   onCancel: () => void
 }
 
-export default function FiveWordGateModal({ trade, onComplete, onCancel }: FiveWordGateModalProps) {
+function matchesSetup(t: Trade, setupName: string): boolean {
+  if (!setupName) return false
+  const haystack = [t.trade_setup, t.setup_tag].filter(Boolean).join(' ').toLowerCase()
+  return haystack.includes(setupName.toLowerCase())
+}
+
+function ctWindowFromTime(isoTime: string): string {
+  try {
+    const d = new Date(isoTime)
+    const s = d.toLocaleTimeString('en-US', {
+      timeZone: 'America/Chicago',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    const [h, m] = s.split(':').map(Number)
+    return classifyWindow(h * 60 + m)
+  } catch {
+    return 'unknown'
+  }
+}
+
+interface ProbScore {
+  wins: number
+  total: number
+  tier: 'full' | 'no-window' | 'setup-only'
+  label: string
+}
+
+export default function FiveWordGateModal({ trade, trades = [], onComplete, onCancel }: FiveWordGateModalProps) {
   const [bias, setBias] = useState<'Bull' | 'Bear' | 'Neutral' | null>(
     (trade?.trade_bias as 'Bull' | 'Bear' | 'Neutral' | null) ?? null
   )
@@ -41,6 +72,57 @@ export default function FiveWordGateModal({ trade, onComplete, onCancel }: FiveW
   }
 
   const filledCount = [bias !== null, setup !== '', trigger.trim() !== '', location !== '', risk.trim() !== ''].filter(Boolean).length
+
+  // Probability score: computed as soon as setup + bias are selected
+  const probScore = useMemo<ProbScore | null>(() => {
+    if (!setup || !bias || trades.length === 0) return null
+
+    const setupMatches = trades.filter((t) => matchesSetup(t, setup))
+    if (setupMatches.length === 0) return null
+
+    // Determine current time window
+    const nowWindow = ctWindowFromTime(new Date().toISOString())
+
+    // Tier 1: setup + bias + window (most specific)
+    const tier1 = setupMatches.filter(
+      (t) => (t.trade_bias ?? '').toLowerCase() === bias.toLowerCase() &&
+              ctWindowFromTime(t.entry_time) === nowWindow,
+    )
+    if (tier1.length >= 3) {
+      const wins = tier1.filter((t) => t.net_pnl > 0).length
+      const windowLabel: Record<string, string> = {
+        primary: '08:45–09:30', continuation: '09:30–10:30', late: '10:30–11:00',
+        secondary: '12:30–14:00', building: 'pre-ORB', dead_zone: 'dead zone', closed: 'after-hours',
+      }
+      return {
+        wins, total: tier1.length, tier: 'full',
+        label: `${setup} · ${bias} bias · ${windowLabel[nowWindow] ?? nowWindow} window`,
+      }
+    }
+
+    // Tier 2: setup + bias (no window filter)
+    const tier2 = setupMatches.filter(
+      (t) => (t.trade_bias ?? '').toLowerCase() === bias.toLowerCase(),
+    )
+    if (tier2.length >= 3) {
+      const wins = tier2.filter((t) => t.net_pnl > 0).length
+      return {
+        wins, total: tier2.length, tier: 'no-window',
+        label: `${setup} · ${bias} bias (all sessions)`,
+      }
+    }
+
+    // Tier 3: setup only
+    if (setupMatches.length >= 3) {
+      const wins = setupMatches.filter((t) => t.net_pnl > 0).length
+      return {
+        wins, total: setupMatches.length, tier: 'setup-only',
+        label: `${setup} (all biases)`,
+      }
+    }
+
+    return null
+  }, [setup, bias, trades])
 
   return (
     <div className="space-y-5">
@@ -199,6 +281,44 @@ export default function FiveWordGateModal({ trade, onComplete, onCancel }: FiveW
         </div>
         <p className="text-xs text-gray-500 text-right">{filledCount}/5 complete</p>
       </div>
+
+      {/* Pre-trade probability score */}
+      {probScore && (() => {
+        const winRate = probScore.wins / probScore.total
+        const isStrong = winRate >= 0.6
+        const isWeak = winRate < 0.4
+        const color = isStrong ? 'emerald' : isWeak ? 'red' : 'amber'
+        const Icon = isStrong ? TrendingUp : isWeak ? TrendingDown : Minus
+        return (
+          <div className={cn(
+            'rounded-xl border px-4 py-3.5 space-y-1.5',
+            color === 'emerald' && 'border-emerald-500/30 bg-emerald-500/5',
+            color === 'amber' && 'border-amber-500/30 bg-amber-500/5',
+            color === 'red' && 'border-red-500/30 bg-red-500/5',
+          )}>
+            <div className="flex items-center gap-2">
+              <Icon className={cn('h-4 w-4 shrink-0',
+                color === 'emerald' && 'text-emerald-400',
+                color === 'amber' && 'text-amber-400',
+                color === 'red' && 'text-red-400',
+              )} />
+              <p className={cn('text-sm font-semibold',
+                color === 'emerald' && 'text-emerald-300',
+                color === 'amber' && 'text-amber-300',
+                color === 'red' && 'text-red-300',
+              )}>
+                {probScore.wins} wins / {probScore.total} trades — {Math.round(winRate * 100)}% win rate
+              </p>
+            </div>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Historical edge for <span className="text-gray-200 font-medium">{probScore.label}</span>
+              {probScore.tier === 'no-window' && ' — not enough data for this time window yet'}
+              {probScore.tier === 'setup-only' && ' — not enough data for this bias+window combination yet'}
+              . {isWeak ? 'Below-average edge — proceed only with A+ confluence.' : isStrong ? 'Strong edge. Proceed if all five gate answers are solid.' : 'Moderate edge. Confirm your location and trigger are clean.'}
+            </p>
+          </div>
+        )
+      })()}
 
       {/* Confirmation checkbox */}
       {allFilled && (
