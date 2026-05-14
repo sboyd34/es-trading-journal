@@ -53,6 +53,22 @@ export async function POST() {
       const newTrades = trades.filter((t) => !existingIds.has(t.tradovate_order_id))
 
       if (newTrades.length > 0) {
+        // Resolve broker_account_id → apex_accounts.id
+        const brokerIds = Array.from(
+          new Set(newTrades.map((t) => t.broker_account_id).filter((id): id is string => !!id)),
+        )
+        const brokerToAccountId = new Map<string, string>()
+        if (brokerIds.length > 0) {
+          const { data: matched } = await supabase
+            .from('apex_accounts')
+            .select('id, broker_account_id')
+            .eq('user_id', user.id)
+            .in('broker_account_id', brokerIds)
+          for (const a of matched ?? []) {
+            if (a.broker_account_id) brokerToAccountId.set(a.broker_account_id, a.id)
+          }
+        }
+
         const rows = newTrades.map((t) => ({
           user_id: user.id,
           date: t.date,
@@ -65,6 +81,7 @@ export async function POST() {
           commission: t.commission,
           instrument: t.instrument,
           tradovate_order_id: t.tradovate_order_id,
+          account_id: t.broker_account_id ? brokerToAccountId.get(t.broker_account_id) ?? null : null,
           tags: [],
         }))
         const { data: insertedData } = await supabase.from('trades').insert(rows).select()

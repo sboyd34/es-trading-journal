@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Trade, ApexSettings } from '@/types'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Trade, ApexAccount } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn, formatCurrency } from '@/lib/utils'
 import { differenceInDays, parseISO, format, addDays } from 'date-fns'
@@ -23,6 +23,8 @@ import {
   TrendingUp,
   DollarSign,
   BarChart2,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 
 // ── Apex 4.0 account configurations ─────────────────────────────────────────
@@ -36,6 +38,8 @@ const APEX_CONFIGS = {
 
 type AccountSize = keyof typeof APEX_CONFIGS
 const ACCOUNT_SIZES = [25000, 50000, 100000, 150000] as AccountSize[]
+
+const ACTIVE_ACCOUNT_KEY = 'apex.activeAccountId'
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -76,9 +80,10 @@ function SectionCard({ children, className }: { children: React.ReactNode; class
 
 // ── Migration guide (shown when table hasn't been created yet) ────────────────
 
-const MIGRATION_SQL = `CREATE TABLE IF NOT EXISTS apex_settings (
+const MIGRATION_SQL = `CREATE TABLE IF NOT EXISTS apex_accounts (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name text NOT NULL,
   account_size integer NOT NULL DEFAULT 50000,
   mode text NOT NULL DEFAULT 'evaluation'
     CHECK (mode IN ('evaluation', 'pa')),
@@ -89,12 +94,13 @@ const MIGRATION_SQL = `CREATE TABLE IF NOT EXISTS apex_settings (
   todays_starting_balance numeric NOT NULL DEFAULT 50000,
   highest_balance numeric NOT NULL DEFAULT 50000,
   purchase_date date,
+  created_at timestamptz DEFAULT now() NOT NULL,
   updated_at timestamptz DEFAULT now() NOT NULL,
-  UNIQUE(user_id)
+  UNIQUE(user_id, name)
 );
-ALTER TABLE apex_settings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users manage own apex settings" ON apex_settings
-  FOR ALL USING (auth.uid() = user_id);`
+ALTER TABLE apex_accounts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own apex accounts" ON apex_accounts
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);`
 
 function MigrationGuide() {
   const [copied, setCopied] = useState(false)
@@ -144,12 +150,14 @@ function MigrationGuide() {
 
 interface ApexClientProps {
   userId: string
-  initialSettings: ApexSettings | null
+  initialAccounts: ApexAccount[]
   initialTrades: Trade[]
   tableReady: boolean
 }
 
 interface FormState {
+  name: string
+  broker_account_id: string
   account_size: number
   mode: 'evaluation' | 'pa'
   drawdown_type: 'eod' | 'intraday'
@@ -160,26 +168,97 @@ interface FormState {
   purchase_date: string
 }
 
-function toFormState(s: ApexSettings | null): FormState {
+function defaultForm(existingNames: string[]): FormState {
+  let candidate = 'Account 1'
+  let i = 1
+  while (existingNames.includes(candidate)) {
+    i++
+    candidate = `Account ${i}`
+  }
   return {
-    account_size: s?.account_size ?? 50000,
-    mode: s?.mode ?? 'evaluation',
-    drawdown_type: s?.drawdown_type ?? 'intraday',
-    starting_balance: String(s?.starting_balance ?? 50000),
-    current_balance: String(s?.current_balance ?? 50000),
-    todays_starting_balance: String(s?.todays_starting_balance ?? 50000),
-    highest_balance: String(s?.highest_balance ?? 50000),
-    purchase_date: s?.purchase_date ?? '',
+    name: candidate,
+    broker_account_id: '',
+    account_size: 50000,
+    mode: 'evaluation',
+    drawdown_type: 'intraday',
+    starting_balance: '50000',
+    current_balance: '50000',
+    todays_starting_balance: '50000',
+    highest_balance: '50000',
+    purchase_date: '',
   }
 }
 
-export default function ApexClient({ userId, initialSettings, initialTrades, tableReady }: ApexClientProps) {
+function fromAccount(a: ApexAccount): FormState {
+  return {
+    name: a.name,
+    broker_account_id: a.broker_account_id ?? '',
+    account_size: a.account_size,
+    mode: a.mode,
+    drawdown_type: a.drawdown_type,
+    starting_balance: String(a.starting_balance),
+    current_balance: String(a.current_balance),
+    todays_starting_balance: String(a.todays_starting_balance),
+    highest_balance: String(a.highest_balance),
+    purchase_date: a.purchase_date ?? '',
+  }
+}
+
+type ActiveId = string | 'new' | null
+
+export default function ApexClient({ userId, initialAccounts, initialTrades, tableReady }: ApexClientProps) {
   const supabase = createClient()
 
-  const [form, setForm] = useState<FormState>(() => toFormState(initialSettings))
-  const [settingsOpen, setSettingsOpen] = useState(!initialSettings)
+  const [accounts, setAccounts] = useState<ApexAccount[]>(initialAccounts)
+  const [activeId, setActiveId] = useState<ActiveId>(() => {
+    if (initialAccounts.length === 0) return tableReady ? 'new' : null
+    return initialAccounts[0].id
+  })
+
+  // Restore last-viewed account from localStorage on mount
+  useEffect(() => {
+    if (typeof window === 'undefined' || accounts.length === 0) return
+    const stored = window.localStorage.getItem(ACTIVE_ACCOUNT_KEY)
+    if (stored && accounts.some((a) => a.id === stored)) {
+      setActiveId(stored)
+    }
+    // intentionally only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persist selection
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (activeId && activeId !== 'new') {
+      window.localStorage.setItem(ACTIVE_ACCOUNT_KEY, activeId)
+    }
+  }, [activeId])
+
+  const activeAccount = useMemo(
+    () => (activeId && activeId !== 'new' ? accounts.find((a) => a.id === activeId) ?? null : null),
+    [activeId, accounts],
+  )
+
+  const [form, setForm] = useState<FormState>(() => {
+    if (initialAccounts.length === 0) return defaultForm([])
+    return fromAccount(initialAccounts[0])
+  })
+
+  const [settingsOpen, setSettingsOpen] = useState(initialAccounts.length === 0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // When the active selection changes, refresh the form
+  useEffect(() => {
+    if (activeId === 'new') {
+      setForm(defaultForm(accounts.map((a) => a.name)))
+      setSettingsOpen(true)
+    } else if (activeAccount) {
+      setForm(fromAccount(activeAccount))
+    }
+    setSaveError(null)
+  }, [activeId, activeAccount, accounts])
 
   // numeric accessors
   const num = useMemo(() => ({
@@ -198,11 +277,16 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
     setSaving(true)
     setSaveError(null)
     try {
+      if (!form.name.trim()) {
+        throw new Error('Account name is required')
+      }
       // Auto-advance highest_balance if current eclipses it
       const newHighest = Math.max(num.highest_balance, num.current_balance)
 
       const payload = {
         user_id: userId,
+        name: form.name.trim(),
+        broker_account_id: form.broker_account_id.trim() || null,
         account_size: num.account_size,
         mode: form.mode,
         drawdown_type: form.drawdown_type,
@@ -214,20 +298,62 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
         updated_at: new Date().toISOString(),
       }
 
-      const { error } = await supabase
-        .from('apex_settings')
-        .upsert(payload, { onConflict: 'user_id' })
+      if (activeId === 'new') {
+        const { data, error } = await supabase
+          .from('apex_accounts')
+          .insert(payload)
+          .select()
+          .single()
+        if (error) throw error
+        if (data) {
+          const inserted = data as ApexAccount
+          setAccounts((prev) => [...prev, inserted])
+          setActiveId(inserted.id)
+        }
+      } else if (activeId) {
+        const { data, error } = await supabase
+          .from('apex_accounts')
+          .update(payload)
+          .eq('id', activeId)
+          .select()
+          .single()
+        if (error) throw error
+        if (data) {
+          const updated = data as ApexAccount
+          setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
+        }
+      }
 
-      if (error) throw error
-
-      setForm(f => ({ ...f, highest_balance: String(newHighest) }))
+      setForm((f) => ({ ...f, highest_balance: String(newHighest) }))
       setSettingsOpen(false)
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setSaving(false)
     }
-  }, [supabase, userId, form, num])
+  }, [supabase, userId, form, num, activeId])
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+
+  const handleDelete = useCallback(async () => {
+    if (!activeAccount) return
+    if (!window.confirm(`Delete account "${activeAccount.name}"? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('apex_accounts')
+        .delete()
+        .eq('id', activeAccount.id)
+      if (error) throw error
+      const remaining = accounts.filter((a) => a.id !== activeAccount.id)
+      setAccounts(remaining)
+      setActiveId(remaining[0]?.id ?? 'new')
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }, [supabase, activeAccount, accounts])
 
   // ── Derived values ────────────────────────────────────────────────────────
 
@@ -247,18 +373,30 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
     }
   }, [form.purchase_date])
 
-  // Trade statistics from journal
+  // Trade list scoped to the active account
+  const [trades, setTrades] = useState<Trade[]>(initialTrades)
+  const accountTrades = useMemo(() => {
+    if (!activeAccount) return [] as Trade[]
+    return trades.filter((t) => t.account_id === activeAccount.id)
+  }, [trades, activeAccount])
+
+  const unassignedCount = useMemo(
+    () => trades.filter((t) => t.account_id == null).length,
+    [trades],
+  )
+
+  // Trade statistics from journal (scoped to the active account)
   const tradeStats = useMemo(() => {
-    if (!initialTrades.length) {
+    if (!accountTrades.length) {
       return { totalPnL: 0, tradingDays: 0, avgDailyPnL: 0, bestDayPnL: 0, bestDayDate: null as string | null, qualifyingDays: 0, consistencyPct: 0 }
     }
 
     const byDate = new Map<string, number>()
-    for (const t of initialTrades) {
+    for (const t of accountTrades) {
       byDate.set(t.date, (byDate.get(t.date) ?? 0) + t.net_pnl)
     }
 
-    const totalPnL = initialTrades.reduce((s, t) => s + t.net_pnl, 0)
+    const totalPnL = accountTrades.reduce((s, t) => s + t.net_pnl, 0)
     const tradingDays = byDate.size
     const avgDailyPnL = tradingDays > 0 ? totalPnL / tradingDays : 0
 
@@ -274,7 +412,28 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
     const consistencyPct = totalPnL > 0 ? (bestDayPnL / totalPnL) * 100 : 0
 
     return { totalPnL, tradingDays, avgDailyPnL, bestDayPnL, bestDayDate, qualifyingDays, consistencyPct }
-  }, [initialTrades])
+  }, [accountTrades])
+
+  // Bulk-assign all unassigned trades to the active account
+  const [assigning, setAssigning] = useState(false)
+  const handleAssignUnassigned = useCallback(async () => {
+    if (!activeAccount || unassignedCount === 0) return
+    if (!window.confirm(`Assign all ${unassignedCount} unassigned trade${unassignedCount === 1 ? '' : 's'} to "${activeAccount.name}"?`)) return
+    setAssigning(true)
+    try {
+      const { error } = await supabase
+        .from('trades')
+        .update({ account_id: activeAccount.id })
+        .eq('user_id', userId)
+        .is('account_id', null)
+      if (error) throw error
+      setTrades((prev) => prev.map((t) => (t.account_id == null ? { ...t, account_id: activeAccount.id } : t)))
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Assign failed')
+    } finally {
+      setAssigning(false)
+    }
+  }, [activeAccount, unassignedCount, supabase, userId])
 
   // Eval pass readiness
   const passReady = form.mode === 'evaluation' &&
@@ -317,6 +476,10 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
   }
 
   const accountLabel = `$${(form.account_size / 1000).toFixed(0)}K`
+  const modeLabel = form.mode === 'evaluation' ? 'Eval' : 'PA'
+
+  // Show tracker panels only when an existing account is selected (not when adding new)
+  const showTracker = tableReady && activeId !== null && activeId !== 'new' && activeAccount !== null
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -330,7 +493,53 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
       {/* Migration guide */}
       {!tableReady && <MigrationGuide />}
 
+      {/* ── Account tabs ───────────────────────────────────────────────── */}
+      {tableReady && (accounts.length > 0 || activeId === 'new') && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {accounts.map((a) => {
+            const isActive = a.id === activeId
+            const isPa = a.mode === 'pa'
+            return (
+              <button
+                key={a.id}
+                onClick={() => setActiveId(a.id)}
+                className={cn(
+                  'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition',
+                  isActive
+                    ? 'bg-blue-600 border-blue-500 text-white'
+                    : 'bg-gray-800/60 border-gray-700 text-gray-300 hover:text-white hover:border-gray-600',
+                )}
+                title={`${a.name} · ${a.account_size / 1000}K ${isPa ? 'PA' : 'Eval'}`}
+              >
+                <span>{a.name}</span>
+                <span className={cn(
+                  'text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded',
+                  isActive
+                    ? isPa ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'
+                    : isPa ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400',
+                )}>
+                  {isPa ? 'PA' : 'Eval'}
+                </span>
+              </button>
+            )
+          })}
+          <button
+            onClick={() => setActiveId('new')}
+            className={cn(
+              'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition',
+              activeId === 'new'
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-gray-800/40 border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-gray-500',
+            )}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add account
+          </button>
+        </div>
+      )}
+
       {/* ── Settings Panel ────────────────────────────────────────────── */}
+      {tableReady && (
       <div className="border border-gray-700/50 rounded-xl overflow-hidden">
         <button
           onClick={() => setSettingsOpen(o => !o)}
@@ -338,9 +547,11 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
         >
           <div className="flex items-center gap-2">
             <Settings2 className="h-4 w-4 text-gray-400" />
-            <span className="text-sm font-medium text-gray-300">Account Settings</span>
+            <span className="text-sm font-medium text-gray-300">
+              {activeId === 'new' ? 'New Account' : `${form.name} — Settings`}
+            </span>
             <span className="text-[11px] text-gray-600 ml-1">
-              {accountLabel} · {form.mode === 'evaluation' ? 'Eval' : 'PA'} · {form.drawdown_type === 'intraday' ? 'Intraday' : 'EOD'}
+              {accountLabel} · {modeLabel} · {form.drawdown_type === 'intraday' ? 'Intraday' : 'EOD'}
             </span>
           </div>
           {settingsOpen
@@ -350,6 +561,35 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
 
         {settingsOpen && (
           <div className="p-4 space-y-4 border-t border-gray-700/50">
+
+            {/* Account name + broker account id */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 block">
+                  Account Name
+                </label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. 50K Eval #1"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 block">
+                  Tradovate Account ID
+                  <span className="text-[10px] text-gray-600 normal-case font-normal ml-1">(for auto-matching imports)</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.broker_account_id}
+                  onChange={(e) => setForm(f => ({ ...f, broker_account_id: e.target.value }))}
+                  placeholder="e.g. APEX-12345 or 67890"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
 
             {/* Row 1: Account size + Mode */}
             <div className="grid grid-cols-2 gap-3">
@@ -499,19 +739,54 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
               </p>
             )}
 
-            <button
-              onClick={handleSave}
-              disabled={saving || !tableReady}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-semibold text-white transition"
-            >
-              {saving ? 'Saving…' : 'Save Settings'}
-            </button>
+            <div className="flex gap-2">
+              {activeId !== 'new' && activeAccount && (
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting || saving}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50 transition"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={saving || !tableReady}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-semibold text-white transition"
+              >
+                {saving ? 'Saving…' : activeId === 'new' ? 'Create Account' : 'Save Settings'}
+              </button>
+            </div>
           </div>
         )}
       </div>
+      )}
 
-      {/* Only show tracker panels once table is ready */}
-      {tableReady && (
+      {/* Unassigned trades backfill prompt */}
+      {showTracker && unassignedCount > 0 && (
+        <div className="border border-amber-500/40 bg-amber-500/5 rounded-xl px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-300">
+              {unassignedCount} unassigned trade{unassignedCount === 1 ? '' : 's'}
+            </p>
+            <p className="text-xs text-amber-400/80 mt-0.5">
+              These won&apos;t appear in this account&apos;s stats until you assign them.
+            </p>
+          </div>
+          <button
+            onClick={handleAssignUnassigned}
+            disabled={assigning}
+            className="px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-500/40 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 disabled:opacity-50 transition"
+          >
+            {assigning ? 'Assigning…' : `Assign to "${activeAccount?.name}"`}
+          </button>
+        </div>
+      )}
+
+      {/* Tracker panels — only when an existing account is selected */}
+      {showTracker && (
         <>
           {/* ─────────────────── EVALUATION MODE ─────────────────────────── */}
           {form.mode === 'evaluation' && (
@@ -750,7 +1025,7 @@ export default function ApexClient({ userId, initialSettings, initialTrades, tab
                 </div>
                 <p className="text-[11px] text-gray-600 flex items-center gap-1">
                   <Info className="h-3 w-3 shrink-0" />
-                  Journal P&L is for reference only. Current balance in Settings is the source of truth for drawdown tracking.
+                  Journal P&L includes only trades assigned to this account. Current balance in Settings is the source of truth for drawdown tracking.
                 </p>
               </SectionCard>
             </>

@@ -14,6 +14,7 @@ export interface ParsedTrade {
   tradovate_order_id: string
   instrument: string
   pnl_raw: string
+  broker_account_id: string | null
 }
 
 export const POINT_VALUES: Record<string, number> = {
@@ -88,6 +89,8 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
     const soldTs      = (row.soldTimestamp   ?? '').trim()
     const buyFillId   = (row.buyFillId       ?? '').trim()
     const sellFillId  = (row.sellFillId      ?? '').trim()
+    // Tradovate Performance CSV column is usually "account" or "accountId".
+    const accountRaw  = (row.account ?? row.accountId ?? row.accountName ?? '').trim()
 
     // Skip rows missing required fields
     if (!symbol || !qtyRaw || !buyPriceRaw || !sellPriceRaw || !boughtTs) continue
@@ -130,6 +133,7 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
       tradovate_order_id: `${buyFillId}_${sellFillId}`,
       instrument,
       pnl_raw:            pnlRaw,
+      broker_account_id:  accountRaw || null,
     })
   }
 

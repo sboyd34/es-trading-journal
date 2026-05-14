@@ -46,13 +46,30 @@ export async function POST(request: NextRequest) {
       MES: 0.31,
     }
 
+    // Resolve broker_account_id → apex_accounts.id once
+    const brokerIds = Array.from(
+      new Set(trades.map((t) => t.broker_account_id).filter((id): id is string => !!id)),
+    )
+    const brokerToAccountId = new Map<string, string>()
+    if (brokerIds.length > 0) {
+      const { data: matched } = await supabase
+        .from('apex_accounts')
+        .select('id, broker_account_id')
+        .eq('user_id', user.id)
+        .in('broker_account_id', brokerIds)
+      for (const a of matched ?? []) {
+        if (a.broker_account_id) brokerToAccountId.set(a.broker_account_id, a.id)
+      }
+    }
+
     // gross_pnl and net_pnl are GENERATED ALWAYS AS columns — never insert them.
     const tradeRows = trades.map((trade) => {
       const instrument = trade.instrument || 'ES'
       const quantity = trade.quantity
       const commission = Math.round((ALL_IN_RATES[instrument] ?? 3.472) * quantity * 1000) / 1000
+      const accountId = trade.broker_account_id ? brokerToAccountId.get(trade.broker_account_id) ?? null : null
 
-      console.log('[import] instrument:', instrument, '| qty:', quantity, '| commission:', commission)
+      console.log('[import] instrument:', instrument, '| qty:', quantity, '| commission:', commission, '| account:', accountId)
 
       return {
         user_id: user.id,
@@ -66,6 +83,7 @@ export async function POST(request: NextRequest) {
         commission,
         instrument,
         tradovate_order_id: trade.tradovate_order_id || null,
+        account_id: accountId,
         tags: newsRelatedEntryTimes.has(trade.entry_time) ? ['news driven'] : [],
       }
     })

@@ -47,6 +47,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       'reflection',
       'tags',
       'instrument',
+      'account_id',
       'entry_chart_url',
       'exit_chart_url',
       'trade_bias',

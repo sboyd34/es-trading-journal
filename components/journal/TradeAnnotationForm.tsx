@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Trade } from '@/types'
+import { Trade, ApexAccount } from '@/types'
 import { cn, getMoodEmoji, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
@@ -53,6 +53,8 @@ export default function TradeAnnotationForm({
     return existing.join(', ')
   })
   const [instrument, setInstrument] = useState(trade.instrument || 'ES')
+  const [accountId, setAccountId] = useState<string | null>(trade.account_id ?? null)
+  const [accounts, setAccounts] = useState<ApexAccount[]>([])
   const [saving, setSaving] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
 
@@ -71,6 +73,19 @@ export default function TradeAnnotationForm({
       recognitionRef.current?.stop()
     }
   }, [])
+
+  // Load the user's Apex accounts so the form can show an account dropdown
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('apex_accounts')
+        .select('*')
+        .order('created_at', { ascending: true, nullsFirst: false })
+      if (!cancelled && data) setAccounts(data as ApexAccount[])
+    })()
+    return () => { cancelled = true }
+  }, [supabase])
 
   // ── Voice recording ──────────────────────────────────────────────────────
 
@@ -184,6 +199,7 @@ export default function TradeAnnotationForm({
           reflection: reflection || null,
           tags: tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
           instrument,
+          account_id: accountId,
           entry_chart_url: entryChart ? entryChart.split('?')[0] : null,
           exit_chart_url: exitChart ? exitChart.split('?')[0] : null,
           ...(gateAnswers && {
@@ -357,6 +373,25 @@ export default function TradeAnnotationForm({
           </select>
         </div>
       </div>
+
+      {/* Apex account */}
+      {accounts.length > 0 && (
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Apex Account</label>
+          <select
+            value={accountId ?? ''}
+            onChange={(e) => setAccountId(e.target.value || null)}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Unassigned</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} — {a.mode === 'pa' ? 'PA' : 'Eval'} ${(a.account_size / 1000).toFixed(0)}K
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* MAE / MFE / SL / Target */}
       <div className="grid grid-cols-2 gap-3">

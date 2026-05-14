@@ -72,6 +72,7 @@ interface Fill {
   id: number
   orderId: number
   contractId: number
+  accountId?: number
   timestamp: string
   tradeDate: { year: number; month: number; day: number }
   action: 'Buy' | 'Sell'
@@ -118,7 +119,8 @@ export async function fetchAndMatchTrades(token: string): Promise<ParsedTrade[]>
   const nameMap = new Map<number, string>()
   await Promise.all(uniqueIds.map(async (id) => nameMap.set(id, await resolveContractName(id, token))))
 
-  // Group fills by (contractName, date)
+  // Group fills by (accountId, contractName, date) so fills from different
+  // accounts don't FIFO-match each other.
   type RichFill = Fill & { instrument: string; date: string }
   const groups = new Map<string, RichFill[]>()
 
@@ -128,7 +130,8 @@ export async function fetchAndMatchTrades(token: string): Promise<ParsedTrade[]>
     if (!(instrument in POINT_VALUES)) continue
     const td = fill.tradeDate
     const date = `${td.year}-${String(td.month).padStart(2, '0')}-${String(td.day).padStart(2, '0')}`
-    const key = `${contractName}_${date}`
+    const accountKey = fill.accountId != null ? String(fill.accountId) : 'unknown'
+    const key = `${accountKey}_${contractName}_${date}`
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push({ ...fill, instrument, date })
   }
@@ -137,6 +140,7 @@ export async function fetchAndMatchTrades(token: string): Promise<ParsedTrade[]>
 
   for (const group of Array.from(groups.values())) {
     const { instrument, date } = group[0]
+    const brokerAccountId = group[0].accountId != null ? String(group[0].accountId) : null
     const pointValue = POINT_VALUES[instrument] ?? 50
 
     group.sort((a: RichFill, b: RichFill) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -174,6 +178,7 @@ export async function fetchAndMatchTrades(token: string): Promise<ParsedTrade[]>
           tradovate_order_id: `fill_${top.fillId}_${fill.id}`,
           instrument,
           pnl_raw: '',
+          broker_account_id: brokerAccountId,
         })
 
         if (top.qty === 0) open.shift()

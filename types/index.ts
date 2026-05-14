@@ -23,6 +23,7 @@ export interface Trade {
   tags: string[]
   instrument: string
   tradovate_order_id: string | null
+  account_id: string | null
   entry_chart_url: string | null
   exit_chart_url: string | null
   trade_bias: 'Bull' | 'Bear' | 'Neutral' | null
@@ -153,9 +154,11 @@ export interface ChecklistItem {
   created_at: string
 }
 
-export interface ApexSettings {
+export interface ApexAccount {
   id: string
   user_id: string
+  name: string
+  broker_account_id: string | null
   account_size: number
   mode: 'evaluation' | 'pa'
   drawdown_type: 'eod' | 'intraday'
@@ -164,6 +167,7 @@ export interface ApexSettings {
   todays_starting_balance: number
   highest_balance: number
   purchase_date: string | null
+  created_at: string
   updated_at: string
 }
 
