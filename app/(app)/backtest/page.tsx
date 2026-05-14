@@ -7,12 +7,15 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/ui/Modal'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import BacktestTradeForm from '@/components/backtest/BacktestTradeForm'
+import BlindBacktestClient from '@/components/blind-backtest/BlindBacktestClient'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { Plus, Trash2, Edit2, Brain, TrendingUp, TrendingDown } from 'lucide-react'
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
 
 const POINT_VALUES: Record<string, number> = { ES: 50, MES: 5, NQ: 20, MNQ: 2 }
+
+type TopTab = 'blind' | 'manual'
 
 function getWindowLabel(timeStr: string | null): string {
   if (!timeStr) return 'Unknown'
@@ -56,6 +59,7 @@ type PageTab = 'session' | 'analytics' | 'comparison'
 export default function BacktestPage() {
   const today = format(new Date(), 'yyyy-MM-dd')
 
+  const [topTab, setTopTab] = useState<TopTab>('blind')
   const [selectedDate, setSelectedDate] = useState(today)
   const [session, setSession] = useState<BacktestSession | null>(null)
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -311,18 +315,41 @@ export default function BacktestPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Backtest</h1>
-          <p className="text-sm text-gray-400 mt-1">Replay historical sessions and evaluate system discipline</p>
+          <p className="text-sm text-gray-400 mt-1">Blind engine · Replay sessions · Evaluate system discipline</p>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="text-xs text-gray-500">Date</label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        {topTab === 'manual' && (
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-gray-500">Date</label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        )}
       </div>
+
+      {/* Top-level mode tabs */}
+      <div className="flex gap-1 bg-gray-800/50 border border-gray-700/50 rounded-xl p-1 w-fit">
+        <button onClick={() => setTopTab('blind')}
+          className={cn('px-5 py-2 rounded-lg text-sm font-medium transition',
+            topTab === 'blind' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
+          🎯 Blind Engine
+        </button>
+        <button onClick={() => setTopTab('manual')}
+          className={cn('px-5 py-2 rounded-lg text-sm font-medium transition',
+            topTab === 'manual' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
+          📋 Session Log
+        </button>
+      </div>
+
+      {/* Blind Backtest Engine */}
+      {topTab === 'blind' && <BlindBacktestClient />}
+
+      {/* Manual session log (existing content) */}
+      {topTab === 'manual' && (
+      <div className="space-y-6">
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-800/50 border border-gray-700/50 rounded-xl p-1 w-fit">
@@ -690,6 +717,8 @@ export default function BacktestPage() {
           />
         )}
       </Modal>
+      </div>
+      )}
     </div>
   )
 }

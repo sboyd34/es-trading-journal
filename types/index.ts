@@ -166,3 +166,48 @@ export interface ApexSettings {
   purchase_date: string | null
   updated_at: string
 }
+
+export interface BlindBacktestSession {
+  id: string
+  user_id: string
+  setup_filter: string
+  time_window_filter: string
+  total_trades_planned: number
+  wins: number
+  losses: number
+  scratches: number
+  avg_r_multiple: number | null
+  ai_session_note: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface BlindBacktestTrade {
+  id: string
+  user_id: string
+  session_id: string | null
+  historical_date: string
+  instrument: string
+  contract_type: string
+  chart_cutoff_time: string
+  trade_bias: string | null
+  trade_setup: string | null
+  trade_trigger: string | null
+  trade_location: string | null
+  trade_risk: string | null
+  entry_price: number
+  stop_price: number
+  target_price: number
+  direction: string
+  confidence: number | null
+  outcome: 'WIN' | 'LOSS' | 'SCRATCH' | null
+  gross_pnl: number | null
+  r_multiple: number | null
+  ai_grade: 'A' | 'B' | 'C' | null
+  ai_feedback: string | null
+  self_grade: 'A' | 'B' | 'C' | null
+  mood: string | null
+  notes: string | null
+  reflection: string | null
+  created_at: string
+}
