@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   FlaskConical,
+  Target,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -24,6 +25,7 @@ const navItems = [
   { href: '/journal', label: 'Journal', icon: BookOpen },
   { href: '/pre-market', label: 'Pre-Market', icon: Sunrise },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/apex', label: 'Apex Tracker', icon: Target },
   { href: '/playbook', label: 'Playbook', icon: BookMarked },
   { href: '/patterns', label: 'AI Patterns', icon: Brain },
   { href: '/backtest', label: 'Backtest', icon: FlaskConical },

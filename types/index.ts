@@ -152,3 +152,17 @@ export interface ChecklistItem {
   order_index: number
   created_at: string
 }
+
+export interface ApexSettings {
+  id: string
+  user_id: string
+  account_size: number
+  mode: 'evaluation' | 'pa'
+  drawdown_type: 'eod' | 'intraday'
+  starting_balance: number
+  current_balance: number
+  todays_starting_balance: number
+  highest_balance: number
+  purchase_date: string | null
+  updated_at: string
+}
