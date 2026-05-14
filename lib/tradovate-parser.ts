@@ -100,18 +100,19 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
 
     const instrument = extractInstrument(symbol)
 
-    // sellPrice > buyPrice → Long; buyPrice > sellPrice → Short; equal → Long
-    const direction: 'long' | 'short' = buyPrice > sellPrice ? 'short' : 'long'
-    const entryPrice = direction === 'long' ? buyPrice  : sellPrice
-    const exitPrice  = direction === 'long' ? sellPrice : buyPrice
-
-    // Use boughtTimestamp as the canonical trade time / date anchor
+    // Direction determined by timestamp order, not price comparison:
+    // soldTimestamp < boughtTimestamp → sold to open (short), bought to close
+    // boughtTimestamp < soldTimestamp → bought to open (long), sold to close
     const boughtDate = parseTimestamp(boughtTs)
     const soldDate   = soldTs ? parseTimestamp(soldTs) : boughtDate
 
-    const grossPnl   = parsePnl(pnlRaw)
-    // ES: $2.89 round trip · MES: $0.29 round trip
-    const commissionRate = instrument === 'MES' ? 0.29 : 2.89
+    const direction: 'long' | 'short' = soldDate < boughtDate ? 'short' : 'long'
+    const entryPrice = direction === 'long' ? buyPrice  : sellPrice
+    const exitPrice  = direction === 'long' ? sellPrice : buyPrice
+
+    const grossPnl = parsePnl(pnlRaw)
+    // ES: $3.10 round trip · MES: $0.31 round trip (brokerage-only plan)
+    const commissionRate = instrument === 'MES' ? 0.31 : 3.10
     const commission = Math.round(qty * commissionRate * 100) / 100
     const netPnl     = Math.round((grossPnl - commission) * 100) / 100
 

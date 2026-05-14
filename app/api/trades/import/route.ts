@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
     }
 
     const ALL_IN_RATES: Record<string, number> = {
-      ES: 3.472,
-      MES: 0.296,
+      ES: 3.10,
+      MES: 0.31,
     }
 
     // gross_pnl and net_pnl are GENERATED ALWAYS AS columns — never insert them.
