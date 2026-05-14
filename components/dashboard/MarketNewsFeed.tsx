@@ -86,6 +86,7 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
   const [isLive, setIsLive] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [macroWarning, setMacroWarning] = useState(false)
+  const [macroTriggers, setMacroTriggers] = useState<NewsArticle[]>([])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastFetchRef = useRef<number>(0)
   const macroRef = useRef(false)
@@ -126,8 +127,10 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
       // Secondary window macro detection
       const ctMin = getCTMinutes()
       if (ctMin >= SECONDARY_SCAN_START && ctMin <= SECONDARY_SCAN_END) {
-        const detected = fetched.some((a) => a.impact === 'HIGH' && isMacroKeyword(a.title))
+        const triggers = fetched.filter((a) => a.impact === 'HIGH' && isMacroKeyword(a.title))
+        const detected = triggers.length > 0
         setMacroWarning(detected)
+        setMacroTriggers(triggers)
         if (detected !== macroRef.current) {
           macroRef.current = detected
           onMacroEvent?.(detected)
@@ -135,6 +138,7 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
       } else if (macroRef.current) {
         macroRef.current = false
         setMacroWarning(false)
+        setMacroTriggers([])
         onMacroEvent?.(false)
       }
     } catch {
@@ -206,11 +210,31 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
 
       {/* Macro event warning */}
       {macroWarning && !collapsed && (
-        <div className="flex items-start gap-3 bg-red-500/10 border-b border-red-500/30 px-4 py-3">
-          <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-red-300 font-medium leading-relaxed">
-            Macro event detected in secondary window — gate closed.
-          </p>
+        <div className="bg-red-500/10 border-b border-red-500/30 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300 font-medium leading-relaxed">
+              Macro event detected in secondary window — gate closed.
+            </p>
+          </div>
+          {macroTriggers.length > 0 && (
+            <ul className="mt-2 ml-7 space-y-1">
+              {macroTriggers.map((a) => (
+                <li key={a.id}>
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-start gap-1.5 text-xs text-red-200/90 hover:text-red-100 transition"
+                  >
+                    <span className="leading-snug">{a.title}</span>
+                    <ExternalLink className="h-3 w-3 shrink-0 mt-0.5 opacity-50 group-hover:opacity-100 transition" />
+                  </a>
+                  <span className="text-[10px] text-red-300/50">{a.source}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
