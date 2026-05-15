@@ -12,9 +12,10 @@ import TradeAnnotationForm from '@/components/journal/TradeAnnotationForm'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw } from 'lucide-react'
+import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw, Sparkles } from 'lucide-react'
 import type { TradeChartResponse } from '@/app/api/trades/[id]/chart/route'
 import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
+import TradeNarrativePanel from '@/components/journal/TradeNarrativePanel'
 
 const CandlestickChart = dynamic(
   () => import('@/components/blind-backtest/CandlestickChart'),
@@ -32,7 +33,7 @@ export default function JournalPage() {
   const [gateAnswers, setGateAnswers] = useState<GateAnswers | null>(null)
   const [isRevengeFlagged, setIsRevengeFlagged] = useState(false)
   const [lightboxTrade, setLightboxTrade] = useState<Trade | null>(null)
-  const [lightboxTab, setLightboxTab] = useState<'entry' | 'exit' | 'auto'>('auto')
+  const [lightboxTab, setLightboxTab] = useState<'entry' | 'exit' | 'auto' | 'narrative'>('auto')
 
   // Auto chart (polygon-backed proxy chart for the active lightbox trade)
   const [autoChart, setAutoChart] = useState<TradeChartResponse | null>(null)
@@ -675,7 +676,7 @@ export default function JournalPage() {
             lightboxTab === 'entry' ? lightboxTrade.entry_chart_url :
             lightboxTab === 'exit'  ? lightboxTrade.exit_chart_url  : null
 
-          const TabButton = ({ tab, label, icon }: { tab: 'entry' | 'exit' | 'auto'; label: string; icon: React.ReactNode }) => (
+          const TabButton = ({ tab, label, icon }: { tab: 'entry' | 'exit' | 'auto' | 'narrative'; label: string; icon: React.ReactNode }) => (
             <button
               onClick={() => setLightboxTab(tab)}
               className={cn(
@@ -695,10 +696,19 @@ export default function JournalPage() {
                 {hasEntry && <TabButton tab="entry" label="Entry Chart" icon={<Camera className="h-3.5 w-3.5" />} />}
                 {hasExit  && <TabButton tab="exit"  label="Exit Chart"  icon={<Camera className="h-3.5 w-3.5" />} />}
                 <TabButton tab="auto" label="Auto Chart" icon={<LineChart className="h-3.5 w-3.5" />} />
+                <TabButton tab="narrative" label="Narrative" icon={<Sparkles className="h-3.5 w-3.5" />} />
               </div>
 
               {/* Body */}
-              {lightboxTab === 'auto' ? (
+              {lightboxTab === 'narrative' ? (
+                <TradeNarrativePanel
+                  trade={lightboxTrade}
+                  onUpdated={(t) => {
+                    setLightboxTrade(t)
+                    setTrades((prev) => prev.map((x) => (x.id === t.id ? t : x)))
+                  }}
+                />
+              ) : lightboxTab === 'auto' ? (
                 <div className="space-y-2">
                   {autoChartLoading && (
                     <div className="bg-gray-900/40 border border-gray-700/40 rounded-xl flex items-center justify-center h-[420px]">
@@ -772,24 +782,26 @@ export default function JournalPage() {
               )}
 
               {/* Footer: label + open-in-new-tab */}
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">
-                  {lightboxTab === 'entry' ? 'Entry chart' :
-                   lightboxTab === 'exit'  ? 'Exit chart'  :
-                   `Auto chart from polygon.io`}
-                </p>
-                {activeUrl && (
-                  <a
-                    href={activeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Open full size
-                  </a>
-                )}
-              </div>
+              {lightboxTab !== 'narrative' && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    {lightboxTab === 'entry' ? 'Entry chart' :
+                     lightboxTab === 'exit'  ? 'Exit chart'  :
+                     `Auto chart from polygon.io`}
+                  </p>
+                  {activeUrl && (
+                    <a
+                      href={activeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open full size
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           )
         })()}

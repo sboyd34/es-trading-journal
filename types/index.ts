@@ -6,6 +6,14 @@ export interface TradeNewsArticle {
   impact: 'HIGH' | 'MED' | 'STD'
 }
 
+export interface TradeAiNarrative {
+  narrative: string
+  what_went_right: string[]
+  what_went_wrong: string[]
+  key_lesson: string
+  generated_at: string
+}
+
 export interface Trade {
   id: string
   user_id: string
@@ -40,6 +48,7 @@ export interface Trade {
   trade_trigger: string | null
   trade_location: string | null
   trade_risk: string | null
+  ai_narrative: TradeAiNarrative | null
   created_at: string
 }
 
