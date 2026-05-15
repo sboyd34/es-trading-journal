@@ -5,7 +5,7 @@ import { Trade, ApexAccount } from '@/types'
 import { cn, getMoodEmoji, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import toast from 'react-hot-toast'
-import { Mic, Square, Camera, ChevronDown, ChevronUp } from 'lucide-react'
+import { Mic, Square, Camera, ChevronDown, ChevronUp, Newspaper, ExternalLink } from 'lucide-react'
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
 import type { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import ImageUploadSlot from '@/components/ui/ImageUploadSlot'
@@ -495,6 +495,42 @@ export default function TradeAnnotationForm({
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
         />
       </div>
+
+      {/* News near entry — silent when none */}
+      {trade.news_articles && trade.news_articles.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Newspaper className="h-4 w-4 text-amber-400" />
+            <p className="text-sm font-semibold text-amber-300">
+              News near entry ({trade.news_articles.length})
+            </p>
+            <span className="text-[10px] uppercase tracking-wider text-amber-400/70">within 15 min</span>
+          </div>
+          <ul className="space-y-1.5">
+            {trade.news_articles.map((a, i) => (
+              <li key={i} className="text-xs">
+                <a
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-start gap-2 hover:text-white transition"
+                >
+                  <span className="text-amber-400 mt-0.5">▸</span>
+                  <span className="flex-1 text-gray-200 group-hover:text-white leading-snug">
+                    {a.title}
+                    <span className="block text-[11px] text-gray-500 mt-0.5">
+                      {a.source} · {new Date(a.publishedAt).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </span>
+                  </span>
+                  <ExternalLink className="h-3 w-3 text-gray-600 group-hover:text-gray-300 mt-0.5 shrink-0" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Tags */}
       <div>

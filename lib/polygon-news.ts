@@ -97,3 +97,41 @@ export function findNewsRelatedEntryTimes<T extends { entry_time: string }>(
   }
   return related
 }
+
+export interface TradeNewsArticleRef {
+  title: string
+  source: string
+  url: string
+  publishedAt: string
+  impact: 'HIGH' | 'MED' | 'STD'
+}
+
+// For each trade's entry_time, returns the high-impact articles published
+// within `windowMs` of that entry, sorted by proximity (closest first).
+// Includes the entry_time → [] entries so callers can see which trades
+// had no nearby news (returns Map keyed by entry_time string).
+export function mapNewsToTrades<T extends { entry_time: string }>(
+  trades: T[],
+  articles: NewsArticle[],
+  windowMs = 15 * 60 * 1000
+): Map<string, TradeNewsArticleRef[]> {
+  const highImpact = articles.filter((a) => a.impact === 'HIGH')
+  const out = new Map<string, TradeNewsArticleRef[]>()
+  for (const trade of trades) {
+    const entryMs = new Date(trade.entry_time).getTime()
+    const matched: { article: NewsArticle; deltaMs: number }[] = []
+    for (const a of highImpact) {
+      const delta = Math.abs(entryMs - new Date(a.publishedAt).getTime())
+      if (delta <= windowMs) matched.push({ article: a, deltaMs: delta })
+    }
+    matched.sort((a, b) => a.deltaMs - b.deltaMs)
+    out.set(trade.entry_time, matched.map(({ article }) => ({
+      title: article.title,
+      source: article.source,
+      url: article.url,
+      publishedAt: article.publishedAt,
+      impact: article.impact,
+    })))
+  }
+  return out
+}

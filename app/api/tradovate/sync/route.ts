@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decryptPassword, authenticate, fetchAndMatchTrades } from '@/lib/tradovate-api'
+import { fetchPolygonNews, mapNewsToTrades, type TradeNewsArticleRef } from '@/lib/polygon-news'
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60_000
 
@@ -69,21 +70,45 @@ export async function POST() {
           }
         }
 
-        const rows = newTrades.map((t) => ({
-          user_id: user.id,
-          date: t.date,
-          entry_time: t.entry_time,
-          exit_time: t.exit_time,
-          direction: t.direction,
-          quantity: t.quantity,
-          entry_price: t.entry_price,
-          exit_price: t.exit_price,
-          commission: t.commission,
-          instrument: t.instrument,
-          tradovate_order_id: t.tradovate_order_id,
-          account_id: t.broker_account_id ? brokerToAccountId.get(t.broker_account_id) ?? null : null,
-          tags: [],
-        }))
+        // News tagging — capture the actual headlines that fired near each entry.
+        let newsByEntryTime = new Map<string, TradeNewsArticleRef[]>()
+        const apiKey = process.env.POLYGON_API_KEY
+        if (apiKey) {
+          try {
+            const entryTimes = newTrades.map((t) => new Date(t.entry_time).getTime())
+            const minTime = new Date(Math.min(...entryTimes) - 15 * 60 * 1000)
+            const maxTime = new Date(Math.max(...entryTimes) + 15 * 60 * 1000)
+            const articles = await fetchPolygonNews({
+              apiKey,
+              publishedGte: minTime.toISOString(),
+              publishedLte: maxTime.toISOString(),
+              limit: 50,
+            })
+            newsByEntryTime = mapNewsToTrades(newTrades, articles)
+          } catch {
+            // best-effort
+          }
+        }
+
+        const rows = newTrades.map((t) => {
+          const nearbyNews = newsByEntryTime.get(t.entry_time) ?? []
+          return {
+            user_id: user.id,
+            date: t.date,
+            entry_time: t.entry_time,
+            exit_time: t.exit_time,
+            direction: t.direction,
+            quantity: t.quantity,
+            entry_price: t.entry_price,
+            exit_price: t.exit_price,
+            commission: t.commission,
+            instrument: t.instrument,
+            tradovate_order_id: t.tradovate_order_id,
+            account_id: t.broker_account_id ? brokerToAccountId.get(t.broker_account_id) ?? null : null,
+            tags: nearbyNews.length > 0 ? ['news driven'] : [],
+            news_articles: nearbyNews.length > 0 ? nearbyNews : null,
+          }
+        })
         const { data: insertedData } = await supabase.from('trades').insert(rows).select()
         inserted = insertedData?.length ?? 0
       }

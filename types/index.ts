@@ -1,3 +1,11 @@
+export interface TradeNewsArticle {
+  title: string
+  source: string
+  url: string
+  publishedAt: string
+  impact: 'HIGH' | 'MED' | 'STD'
+}
+
 export interface Trade {
   id: string
   user_id: string
@@ -24,6 +32,7 @@ export interface Trade {
   instrument: string
   tradovate_order_id: string | null
   account_id: string | null
+  news_articles: TradeNewsArticle[] | null
   entry_chart_url: string | null
   exit_chart_url: string | null
   trade_bias: 'Bull' | 'Bear' | 'Neutral' | null

@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ParsedTrade } from '@/lib/tradovate-parser'
-import { fetchPolygonNews, findNewsRelatedEntryTimes } from '@/lib/polygon-news'
+import { fetchPolygonNews, mapNewsToTrades, type TradeNewsArticleRef } from '@/lib/polygon-news'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,8 +21,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No trades provided' }, { status: 400 })
     }
 
-    // Fetch news to detect news-driven trades before inserting
-    let newsRelatedEntryTimes = new Set<string>()
+    // Fetch news to detect news-driven trades before inserting, and
+    // capture the actual triggering articles per trade for later review.
+    let newsByEntryTime = new Map<string, TradeNewsArticleRef[]>()
     const apiKey = process.env.POLYGON_API_KEY
     if (apiKey && trades.length > 0) {
       try {
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
           publishedLte: maxTime.toISOString(),
           limit: 50,
         })
-        newsRelatedEntryTimes = findNewsRelatedEntryTimes(trades, articles)
+        newsByEntryTime = mapNewsToTrades(trades, articles)
       } catch {
         // News check is best-effort; proceed without it
       }
@@ -68,8 +69,9 @@ export async function POST(request: NextRequest) {
       const quantity = trade.quantity
       const commission = Math.round((ALL_IN_RATES[instrument] ?? 3.472) * quantity * 1000) / 1000
       const accountId = trade.broker_account_id ? brokerToAccountId.get(trade.broker_account_id) ?? null : null
+      const nearbyNews = newsByEntryTime.get(trade.entry_time) ?? []
 
-      console.log('[import] instrument:', instrument, '| qty:', quantity, '| commission:', commission, '| account:', accountId)
+      console.log('[import] instrument:', instrument, '| qty:', quantity, '| commission:', commission, '| account:', accountId, '| news:', nearbyNews.length)
 
       return {
         user_id: user.id,
@@ -84,7 +86,8 @@ export async function POST(request: NextRequest) {
         instrument,
         tradovate_order_id: trade.tradovate_order_id || null,
         account_id: accountId,
-        tags: newsRelatedEntryTimes.has(trade.entry_time) ? ['news driven'] : [],
+        tags: nearbyNews.length > 0 ? ['news driven'] : [],
+        news_articles: nearbyNews.length > 0 ? nearbyNews : null,
       }
     })
 
