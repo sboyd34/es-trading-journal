@@ -20,6 +20,7 @@ import {
   Loader2,
   Newspaper,
   ExternalLink,
+  CalendarClock,
 } from 'lucide-react'
 import MarketStateCard from '@/components/market/MarketStateCard'
 
@@ -36,6 +37,24 @@ const IMPACT_BADGE: Record<PreMarketNewsArticle['impact'], string> = {
   HIGH: 'bg-red-500/20 text-red-400 border border-red-500/40',
   MED: 'bg-amber-500/20 text-amber-400 border border-amber-500/40',
   STD: 'bg-gray-500/20 text-gray-500 border border-gray-600/40',
+}
+
+interface UpcomingEarning {
+  symbol: string
+  date: string
+  hour: 'bmo' | 'amc' | 'dmh' | ''
+  hourLabel: 'BMO' | 'AMC' | 'DMH' | 'TBD'
+  epsEstimate: number | null
+  revenueEstimate: number | null
+  quarter: number
+  year: number
+}
+
+const HOUR_BADGE: Record<UpcomingEarning['hourLabel'], string> = {
+  BMO: 'bg-blue-500/20 text-blue-400 border border-blue-500/40',
+  AMC: 'bg-purple-500/20 text-purple-400 border border-purple-500/40',
+  DMH: 'bg-amber-500/20 text-amber-400 border border-amber-500/40',
+  TBD: 'bg-gray-500/20 text-gray-500 border border-gray-600/40',
 }
 
 function formatRelative(publishedAt: string): string {
@@ -84,6 +103,8 @@ export default function PreMarketPage() {
   const [loadingSession, setLoadingSession] = useState(true)
   const [preMarketNews, setPreMarketNews] = useState<PreMarketNewsArticle[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
+  const [upcomingEarnings, setUpcomingEarnings] = useState<UpcomingEarning[]>([])
+  const [earningsLoading, setEarningsLoading] = useState(true)
   const [autoImported, setAutoImported] = useState(false)
 
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -147,6 +168,21 @@ export default function PreMarketPage() {
       }
     }
     loadNews()
+  }, [])
+
+  useEffect(() => {
+    async function loadEarnings() {
+      try {
+        const res = await fetch('/api/earnings/upcoming?days=7')
+        const data = await res.json()
+        setUpcomingEarnings(data.earnings || [])
+      } catch {
+        // best-effort
+      } finally {
+        setEarningsLoading(false)
+      }
+    }
+    loadEarnings()
   }, [])
 
   async function handleGenerate() {
@@ -239,6 +275,43 @@ export default function PreMarketPage() {
         {preMarketNews.length > 0 && (
           <div className="px-4 py-2 border-t border-gray-700/40 text-xs text-gray-600">
             These headlines will be included in your AI brief automatically.
+          </div>
+        )}
+      </div>
+
+      {/* Upcoming earnings panel */}
+      <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-700/40">
+          <CalendarClock className="h-4 w-4 text-gray-400" />
+          <span className="text-sm font-semibold text-gray-200">Upcoming Earnings</span>
+          <span className="text-xs text-gray-500 ml-1">(next 7 days, Mag 7 + watchlist)</span>
+        </div>
+        {earningsLoading ? (
+          <div className="px-4 py-5 text-xs text-gray-500 text-center">Loading earnings...</div>
+        ) : upcomingEarnings.length === 0 ? (
+          <div className="px-4 py-5 text-xs text-gray-500 text-center">No scheduled earnings in the next 7 days</div>
+        ) : (
+          <div className="divide-y divide-gray-700/30">
+            {upcomingEarnings.map((e) => (
+              <div key={`${e.symbol}-${e.date}`} className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-sm font-bold text-white w-14 shrink-0">{e.symbol}</span>
+                  <span className="text-xs text-gray-400 shrink-0">
+                    {format(parseISO(e.date), 'EEE M/d')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {e.epsEstimate !== null && (
+                    <span className="text-xs text-gray-500">
+                      Est. EPS ${e.epsEstimate.toFixed(2)}
+                    </span>
+                  )}
+                  <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide', HOUR_BADGE[e.hourLabel])}>
+                    {e.hourLabel}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
