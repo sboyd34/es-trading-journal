@@ -6,9 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Modal } from '@/components/ui/Modal'
 import toast from 'react-hot-toast'
-import { Plus, Tag, BarChart2, ChevronRight, X, Download } from 'lucide-react'
+import { Plus, Tag, BarChart2, ChevronRight, X, Download, ArrowUpRight } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { PLAYBOOK_SETUPS } from '@/lib/trading-system'
+import Link from 'next/link'
 
 interface SetupWithStats extends PlaybookSetup {
   tradeCount: number
@@ -265,10 +266,17 @@ export default function PlaybookPage() {
                 <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-white">{selectedSetup.name}</h2>
-                    <div className="flex gap-3 text-sm">
+                    <div className="flex items-center gap-3 text-sm">
                       <span className={cn('font-semibold', selectedSetup.totalPnL >= 0 ? 'text-emerald-400' : 'text-red-400')}>
                         {formatCurrency(selectedSetup.totalPnL)} total
                       </span>
+                      <Link
+                        href={`/playbook/${selectedSetup.id}`}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition"
+                      >
+                        Full Analysis
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </Link>
                     </div>
                   </div>
 
