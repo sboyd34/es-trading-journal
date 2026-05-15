@@ -51,7 +51,7 @@ const CHIPS: { key: keyof IndicatorPrefs; label: string; color: string }[] = [
   { key: 'vwap',  label: 'VWAP',   color: 'bg-yellow-500'  },
   { key: 'ema9',  label: 'EMA 9',  color: 'bg-cyan-500'    },
   { key: 'ema20', label: 'EMA 20', color: 'bg-blue-500'    },
-  { key: 'ema21', label: 'EMA 21', color: 'bg-violet-400'  },
+  { key: 'ema21', label: 'EMA 21', color: 'bg-pink-400'    },
   { key: 'ema50', label: 'EMA 50', color: 'bg-orange-500'  },
 ]
 
