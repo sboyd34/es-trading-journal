@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { computeVWAP, computeEMA } from '@/lib/indicators'
 
 export interface Candle {
   t: number  // Unix seconds (UTC)
@@ -9,6 +10,13 @@ export interface Candle {
   l: number
   c: number
   v: number
+}
+
+export interface IndicatorPrefs {
+  vwap: boolean
+  ema9: boolean
+  ema20: boolean
+  ema50: boolean
 }
 
 interface Props {
@@ -21,6 +29,7 @@ interface Props {
   entryTimestamp?: number   // Unix seconds — marker showing entry bar
   exitTimestamp?: number    // Unix seconds — marker showing exit bar
   direction?: 'long' | 'short'
+  indicators?: IndicatorPrefs
   height?: number
 }
 
@@ -34,6 +43,7 @@ export default function CandlestickChart({
   entryTimestamp,
   exitTimestamp,
   direction,
+  indicators,
   height = 380,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -118,6 +128,30 @@ export default function CandlestickChart({
       }))
 
       series.setData(chartData)
+
+      // Indicator overlays — line series for VWAP / EMAs
+      if (indicators) {
+        type LineCfg = { key: keyof IndicatorPrefs; color: string; title: string; values: (number | null)[] }
+        const overlays: LineCfg[] = []
+        if (indicators.vwap)  overlays.push({ key: 'vwap',  color: '#facc15', title: 'VWAP',   values: computeVWAP(candles) })
+        if (indicators.ema9)  overlays.push({ key: 'ema9',  color: '#22d3ee', title: 'EMA 9',  values: computeEMA(candles, 9) })
+        if (indicators.ema20) overlays.push({ key: 'ema20', color: '#60a5fa', title: 'EMA 20', values: computeEMA(candles, 20) })
+        if (indicators.ema50) overlays.push({ key: 'ema50', color: '#fb923c', title: 'EMA 50', values: computeEMA(candles, 50) })
+
+        for (const o of overlays) {
+          const line = chart.addLineSeries({
+            color: o.color,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            title: o.title,
+          })
+          const data = candles
+            .map((c, i) => ({ time: c.t as unknown as import('lightweight-charts').Time, value: o.values[i] }))
+            .filter((d): d is { time: import('lightweight-charts').Time; value: number } => d.value != null)
+          line.setData(data)
+        }
+      }
 
       // Price lines for reveal mode
       if (entryPrice !== undefined) {
@@ -225,7 +259,8 @@ export default function CandlestickChart({
       cleanup?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, entryPrice, stopPrice, targetPrice, exitPrice, cutoffTimestamp, entryTimestamp, exitTimestamp, height])
+  }, [candles, entryPrice, stopPrice, targetPrice, exitPrice, cutoffTimestamp, entryTimestamp, exitTimestamp, height,
+      indicators?.vwap, indicators?.ema9, indicators?.ema20, indicators?.ema50])
 
   return (
     <div

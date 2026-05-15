@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { Candle } from './CandlestickChart'
 import ImageUploadSlot from '@/components/ui/ImageUploadSlot'
+import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
 
 const CHART_BUCKET = 'trade-charts'
 
@@ -191,6 +192,8 @@ export default function BlindBacktestClient() {
   // browser extensions injecting wrappers around SVG icons.
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+
+  const [indicatorPrefs, setIndicatorPrefs] = useIndicatorPrefs('blindBacktestIndicators')
 
   const [phase, setPhase] = useState<Phase>('home')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -975,8 +978,9 @@ export default function BlindBacktestClient() {
 
         {chartData && !chartLoading && (
           <>
-            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3">
-              <CandlestickChart candles={chartData.blindCandles} height={380} />
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 space-y-2">
+              <IndicatorToggleBar value={indicatorPrefs} onChange={setIndicatorPrefs} />
+              <CandlestickChart candles={chartData.blindCandles} indicators={indicatorPrefs} height={380} />
             </div>
 
             {/* Five-Word Gate form */}
@@ -1156,13 +1160,15 @@ export default function BlindBacktestClient() {
         </div>
 
         {/* Full chart with markers */}
-        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3">
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 space-y-2">
+          <IndicatorToggleBar value={indicatorPrefs} onChange={setIndicatorPrefs} />
           <CandlestickChart
             candles={chartData.fullCandles}
             entryPrice={entry}
             stopPrice={stop}
             targetPrice={target}
             cutoffTimestamp={cutoffCandle?.t}
+            indicators={indicatorPrefs}
             direction={form.direction as 'long' | 'short'}
             height={380}
           />

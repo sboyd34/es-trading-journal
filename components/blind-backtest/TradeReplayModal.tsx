@@ -10,6 +10,7 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { RefreshCw, AlertCircle, Trophy, TrendingDown, Minus, Brain, Camera } from 'lucide-react'
 import type { Candle } from './CandlestickChart'
 import ImageUploadSlot from '@/components/ui/ImageUploadSlot'
+import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
 
 const CandlestickChart = dynamic(() => import('./CandlestickChart'), { ssr: false })
 const CHART_BUCKET = 'trade-charts'
@@ -44,6 +45,7 @@ export default function TradeReplayModal({ trade, open, onClose, onUpdated }: Pr
   const [showBlind, setShowBlind] = useState(false)
   const [chartUrl, setChartUrl] = useState<string | null>(null)
   const [uploadingChart, setUploadingChart] = useState(false)
+  const [indicatorPrefs, setIndicatorPrefs] = useIndicatorPrefs('blindBacktestIndicators')
 
   useEffect(() => {
     if (!open || !trade) return
@@ -249,7 +251,8 @@ export default function TradeReplayModal({ trade, open, onClose, onUpdated }: Pr
           </div>
         )}
         {chart && !loading && (
-          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3">
+          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 space-y-2">
+            <IndicatorToggleBar value={indicatorPrefs} onChange={setIndicatorPrefs} />
             <CandlestickChart
               candles={displayCandles}
               entryPrice={trade.entry_price}
@@ -257,6 +260,7 @@ export default function TradeReplayModal({ trade, open, onClose, onUpdated }: Pr
               targetPrice={trade.target_price}
               cutoffTimestamp={showBlind ? undefined : cutoffCandle?.t}
               direction={trade.direction as 'long' | 'short'}
+              indicators={indicatorPrefs}
               height={380}
             />
           </div>

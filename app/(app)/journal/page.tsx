@@ -14,6 +14,7 @@ import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw } from 'lucide-react'
 import type { TradeChartResponse } from '@/app/api/trades/[id]/chart/route'
+import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
 
 const CandlestickChart = dynamic(
   () => import('@/components/blind-backtest/CandlestickChart'),
@@ -37,6 +38,7 @@ export default function JournalPage() {
   const [autoChart, setAutoChart] = useState<TradeChartResponse | null>(null)
   const [autoChartLoading, setAutoChartLoading] = useState(false)
   const [autoChartError, setAutoChartError] = useState<string | null>(null)
+  const [journalIndicatorPrefs, setJournalIndicatorPrefs] = useIndicatorPrefs('journalAutoChartIndicators')
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState('')
@@ -714,7 +716,8 @@ export default function JournalPage() {
                   )}
                   {autoChart && !autoChartLoading && (
                     <>
-                      <div className="bg-gray-900/40 border border-gray-700/40 rounded-xl p-3">
+                      <div className="bg-gray-900/40 border border-gray-700/40 rounded-xl p-3 space-y-2">
+                        <IndicatorToggleBar value={journalIndicatorPrefs} onChange={setJournalIndicatorPrefs} />
                         <CandlestickChart
                           candles={autoChart.candles}
                           entryPrice={autoChart.entryPrice}
@@ -724,6 +727,7 @@ export default function JournalPage() {
                           entryTimestamp={autoChart.entryTimestamp}
                           exitTimestamp={autoChart.exitTimestamp}
                           direction={autoChart.direction}
+                          indicators={journalIndicatorPrefs}
                           height={420}
                         />
                       </div>
