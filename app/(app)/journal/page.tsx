@@ -12,7 +12,7 @@ import TradeAnnotationForm from '@/components/journal/TradeAnnotationForm'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw, Sparkles } from 'lucide-react'
+import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import type { TradeChartResponse } from '@/app/api/trades/[id]/chart/route'
 import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
 import TradeNarrativePanel from '@/components/journal/TradeNarrativePanel'
@@ -210,6 +210,25 @@ export default function JournalPage() {
     setAnnotatingTrade(null)
     setGateAnswers(null)
     setIsRevengeFlagged(false)
+  }
+
+  async function handleDeleteTrade(trade: Trade) {
+    const ctTime = ctTimeLabel(trade.entry_time) ?? '??:??'
+    const label = `${trade.direction.toUpperCase()} ${trade.quantity}x ${trade.instrument || 'ES'} on ${trade.date} at ${ctTime} CT (P&L ${trade.net_pnl >= 0 ? '+' : ''}$${trade.net_pnl.toFixed(2)})`
+    if (!confirm(`Delete this trade?\n\n${label}\n\nThis cannot be undone.`)) return
+    try {
+      const res = await fetch(`/api/trades/${trade.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to delete')
+      }
+      setTrades((prev) => prev.filter((t) => t.id !== trade.id))
+      if (lightboxTrade?.id === trade.id) setLightboxTrade(null)
+      if (annotatingTrade?.id === trade.id) setAnnotatingTrade(null)
+      toast.success('Trade deleted')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete')
+    }
   }
 
   return (
@@ -482,23 +501,32 @@ export default function JournalPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => {
-                              const THREE_MIN = 3 * 60 * 1000
-                              const entryMs = new Date(trade.entry_time).getTime()
-                              const revengeDetected = trades.some(t => {
-                                if (t.id === trade.id || t.net_pnl >= 0) return false
-                                const exitMs = new Date(t.exit_time).getTime()
-                                const gap = entryMs - exitMs
-                                return gap >= 0 && gap <= THREE_MIN
-                              })
-                              setIsRevengeFlagged(revengeDetected)
-                              setChecklistTrade(trade)
-                            }}
-                            className="text-xs text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/50 rounded px-2 py-1 transition"
-                          >
-                            Annotate
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                const THREE_MIN = 3 * 60 * 1000
+                                const entryMs = new Date(trade.entry_time).getTime()
+                                const revengeDetected = trades.some(t => {
+                                  if (t.id === trade.id || t.net_pnl >= 0) return false
+                                  const exitMs = new Date(t.exit_time).getTime()
+                                  const gap = entryMs - exitMs
+                                  return gap >= 0 && gap <= THREE_MIN
+                                })
+                                setIsRevengeFlagged(revengeDetected)
+                                setChecklistTrade(trade)
+                              }}
+                              className="text-xs text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/50 rounded px-2 py-1 transition"
+                            >
+                              Annotate
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTrade(trade)}
+                              title="Delete trade"
+                              className="text-gray-500 hover:text-red-400 border border-transparent hover:border-red-500/40 rounded p-1 transition"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       )
