@@ -3,14 +3,13 @@ const HIGH_KEYWORDS = [
   'inflation', 'interest rate', 'rate hike', 'rate cut', 'payroll',
   'jobs report', 'non-farm', 'nonfarm', 'powell', 'treasury',
   'jobs', 'auction', 'gdp',
-]
-
-const MED_KEYWORDS = [
   'earnings', 'guidance', 'revenue', 'bank', 'rally', 'sell-off',
   'selloff', 'plunge', 'surge', 'soar', 'yield', 'bond',
   'oil', 'energy', 'china', 'tariff', 'recession', 'economic',
   'economy', 'market', 'stocks', 'equities',
 ]
+
+const MED_KEYWORDS: string[] = []
 
 export function classifyImpact(title: string, keywords: string[] = []): 'HIGH' | 'MED' | 'STD' {
   const text = (title + ' ' + keywords.join(' ')).toLowerCase()
@@ -39,46 +38,71 @@ export interface NewsArticle {
   tickers: string[]
 }
 
+// SPY for macro/index coverage; Mag 7 for single-name earnings that move /ES.
+const DEFAULT_TICKERS = ['SPY', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA']
+
 export async function fetchPolygonNews(params: {
   apiKey: string
   hours?: number
   limit?: number
+  tickers?: string[]
   publishedGte?: string
   publishedLte?: string
 }): Promise<NewsArticle[]> {
-  const { apiKey, hours = 24, limit = 20 } = params
+  const { apiKey, hours = 24, limit = 20, tickers = DEFAULT_TICKERS } = params
   const publishedGte =
     params.publishedGte ||
     new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
 
-  const url = new URL('https://api.polygon.io/v2/reference/news')
-  url.searchParams.set('apiKey', apiKey)
-  url.searchParams.set('ticker', 'SPY')
-  url.searchParams.set('published_utc.gte', publishedGte)
-  if (params.publishedLte) url.searchParams.set('published_utc.lte', params.publishedLte)
-  url.searchParams.set('limit', String(Math.min(limit, 50)))
-  url.searchParams.set('sort', 'published_utc')
-  url.searchParams.set('order', 'desc')
+  const fetchForTicker = async (ticker: string): Promise<PolygonArticle[]> => {
+    const url = new URL('https://api.polygon.io/v2/reference/news')
+    url.searchParams.set('apiKey', apiKey)
+    url.searchParams.set('ticker', ticker)
+    url.searchParams.set('published_utc.gte', publishedGte)
+    if (params.publishedLte) url.searchParams.set('published_utc.lte', params.publishedLte)
+    url.searchParams.set('limit', String(Math.min(limit, 50)))
+    url.searchParams.set('sort', 'published_utc')
+    url.searchParams.set('order', 'desc')
 
-  try {
-    const res = await fetch(url.toString(), {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.results || []).map((a: PolygonArticle) => ({
-      id: a.id,
-      title: a.title,
-      source: a.publisher?.name || 'Unknown',
-      publishedAt: a.published_utc,
-      url: a.article_url,
-      impact: classifyImpact(a.title, a.keywords || []),
-      tickers: a.tickers || [],
-    }))
-  } catch {
-    return []
+    try {
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      })
+      if (!res.ok) return []
+      const data = await res.json()
+      return (data.results || []) as PolygonArticle[]
+    } catch {
+      return []
+    }
   }
+
+  const perTicker = await Promise.all(tickers.map(fetchForTicker))
+
+  const seen = new Set<string>()
+  const merged: PolygonArticle[] = []
+  for (const arr of perTicker) {
+    for (const a of arr) {
+      if (!seen.has(a.id)) {
+        seen.add(a.id)
+        merged.push(a)
+      }
+    }
+  }
+
+  merged.sort(
+    (a, b) => new Date(b.published_utc).getTime() - new Date(a.published_utc).getTime()
+  )
+
+  return merged.slice(0, limit).map((a) => ({
+    id: a.id,
+    title: a.title,
+    source: a.publisher?.name || 'Unknown',
+    publishedAt: a.published_utc,
+    url: a.article_url,
+    impact: classifyImpact(a.title, a.keywords || []),
+    tickers: a.tickers || [],
+  }))
 }
 
 export function findNewsRelatedEntryTimes<T extends { entry_time: string }>(
