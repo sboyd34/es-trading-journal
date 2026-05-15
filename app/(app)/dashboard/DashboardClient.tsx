@@ -16,6 +16,7 @@ import TradovateSyncBadge from '@/components/dashboard/TradovateSyncBadge'
 import TradingWindowIndicator from '@/components/dashboard/TradingWindowIndicator'
 import MarketNewsFeed from '@/components/dashboard/MarketNewsFeed'
 import ProactiveCoachingCard from '@/components/dashboard/ProactiveCoachingCard'
+import MarketStateCard from '@/components/market/MarketStateCard'
 
 interface DashboardClientProps {
   trades: Trade[]
@@ -115,6 +116,9 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
 
       {/* Proactive coaching — only renders when signals are present */}
       <ProactiveCoachingCard trades={trades} todayTrades={todayTrades} riskRules={riskRules} />
+
+      {/* Auto-pulled SPY market state */}
+      <MarketStateCard />
 
       {/* Trading window indicator */}
       <TradingWindowIndicator macroEventDetected={macroEventDetected} />

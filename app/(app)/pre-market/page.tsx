@@ -21,6 +21,7 @@ import {
   Newspaper,
   ExternalLink,
 } from 'lucide-react'
+import MarketStateCard from '@/components/market/MarketStateCard'
 
 interface PreMarketNewsArticle {
   id: string
@@ -185,6 +186,14 @@ export default function PreMarketPage() {
           {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
       </div>
+
+      {/* Auto-pulled market state (yesterday H/L/C, today's gap, opening range) */}
+      <MarketStateCard
+        onUseLevels={(text) => {
+          setContext((prev) => prev.includes(text) ? prev : (prev.trim() ? `${text}\n\n${prev}` : text))
+          toast.success('Reference levels added to your brief')
+        }}
+      />
 
       {/* Pre-market news panel */}
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
