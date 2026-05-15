@@ -16,6 +16,7 @@ export interface IndicatorPrefs {
   vwap: boolean
   ema9: boolean
   ema20: boolean
+  ema21: boolean
   ema50: boolean
 }
 
@@ -136,6 +137,7 @@ export default function CandlestickChart({
         if (indicators.vwap)  overlays.push({ key: 'vwap',  color: '#facc15', title: 'VWAP',   values: computeVWAP(candles) })
         if (indicators.ema9)  overlays.push({ key: 'ema9',  color: '#22d3ee', title: 'EMA 9',  values: computeEMA(candles, 9) })
         if (indicators.ema20) overlays.push({ key: 'ema20', color: '#60a5fa', title: 'EMA 20', values: computeEMA(candles, 20) })
+        if (indicators.ema21) overlays.push({ key: 'ema21', color: '#a78bfa', title: 'EMA 21', values: computeEMA(candles, 21) })
         if (indicators.ema50) overlays.push({ key: 'ema50', color: '#fb923c', title: 'EMA 50', values: computeEMA(candles, 50) })
 
         for (const o of overlays) {
@@ -260,7 +262,7 @@ export default function CandlestickChart({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candles, entryPrice, stopPrice, targetPrice, exitPrice, cutoffTimestamp, entryTimestamp, exitTimestamp, height,
-      indicators?.vwap, indicators?.ema9, indicators?.ema20, indicators?.ema50])
+      indicators?.vwap, indicators?.ema9, indicators?.ema20, indicators?.ema21, indicators?.ema50])
 
   return (
     <div
