@@ -16,7 +16,10 @@ interface Props {
   entryPrice?: number
   stopPrice?: number
   targetPrice?: number
+  exitPrice?: number
   cutoffTimestamp?: number  // Unix seconds — draws a vertical marker at this candle
+  entryTimestamp?: number   // Unix seconds — marker showing entry bar
+  exitTimestamp?: number    // Unix seconds — marker showing exit bar
   direction?: 'long' | 'short'
   height?: number
 }
@@ -26,7 +29,10 @@ export default function CandlestickChart({
   entryPrice,
   stopPrice,
   targetPrice,
+  exitPrice,
   cutoffTimestamp,
+  entryTimestamp,
+  exitTimestamp,
   direction,
   height = 380,
 }: Props) {
@@ -144,16 +150,54 @@ export default function CandlestickChart({
           title: 'Target',
         })
       }
+      if (exitPrice !== undefined) {
+        series.createPriceLine({
+          price: exitPrice,
+          color: '#a78bfa',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: 'Exit',
+        })
+      }
 
-      // Vertical marker at cutoff candle
+      // Vertical markers — supports either the legacy `cutoffTimestamp`
+      // (single arrow above the bar) or `entryTimestamp`/`exitTimestamp`
+      // pairs for showing a real trade's lifetime.
+      const markers: {
+        time: import('lightweight-charts').Time
+        position: 'aboveBar' | 'belowBar'
+        color: string
+        shape: 'arrowDown' | 'arrowUp' | 'circle' | 'square'
+        text: string
+      }[] = []
       if (cutoffTimestamp !== undefined) {
-        series.setMarkers([{
+        markers.push({
           time: cutoffTimestamp as unknown as import('lightweight-charts').Time,
+          position: 'aboveBar', color: '#f59e0b', shape: 'arrowDown', text: 'Entry window',
+        })
+      }
+      if (entryTimestamp !== undefined) {
+        markers.push({
+          time: entryTimestamp as unknown as import('lightweight-charts').Time,
+          position: direction === 'long' ? 'belowBar' : 'aboveBar',
+          color: '#3b82f6',
+          shape: direction === 'long' ? 'arrowUp' : 'arrowDown',
+          text: 'Entry',
+        })
+      }
+      if (exitTimestamp !== undefined) {
+        markers.push({
+          time: exitTimestamp as unknown as import('lightweight-charts').Time,
           position: 'aboveBar',
-          color: '#f59e0b',
-          shape: 'arrowDown',
-          text: 'Entry window',
-        }])
+          color: '#a78bfa',
+          shape: 'circle',
+          text: 'Exit',
+        })
+      }
+      if (markers.length > 0) {
+        markers.sort((a, b) => (a.time as unknown as number) - (b.time as unknown as number))
+        series.setMarkers(markers)
       }
 
       chart.timeScale().fitContent()
@@ -181,7 +225,7 @@ export default function CandlestickChart({
       cleanup?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, entryPrice, stopPrice, targetPrice, cutoffTimestamp, height])
+  }, [candles, entryPrice, stopPrice, targetPrice, exitPrice, cutoffTimestamp, entryTimestamp, exitTimestamp, height])
 
   return (
     <div

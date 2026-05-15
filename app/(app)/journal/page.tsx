@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { Trade } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { parseTradovateCSV } from '@/lib/tradovate-parser'
@@ -11,7 +12,13 @@ import TradeAnnotationForm from '@/components/journal/TradeAnnotationForm'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
+import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw } from 'lucide-react'
+import type { TradeChartResponse } from '@/app/api/trades/[id]/chart/route'
+
+const CandlestickChart = dynamic(
+  () => import('@/components/blind-backtest/CandlestickChart'),
+  { ssr: false },
+)
 
 type Tab = 'log' | 'import'
 
@@ -24,7 +31,12 @@ export default function JournalPage() {
   const [gateAnswers, setGateAnswers] = useState<GateAnswers | null>(null)
   const [isRevengeFlagged, setIsRevengeFlagged] = useState(false)
   const [lightboxTrade, setLightboxTrade] = useState<Trade | null>(null)
-  const [lightboxTab, setLightboxTab] = useState<'entry' | 'exit'>('entry')
+  const [lightboxTab, setLightboxTab] = useState<'entry' | 'exit' | 'auto'>('auto')
+
+  // Auto chart (polygon-backed proxy chart for the active lightbox trade)
+  const [autoChart, setAutoChart] = useState<TradeChartResponse | null>(null)
+  const [autoChartLoading, setAutoChartLoading] = useState(false)
+  const [autoChartError, setAutoChartError] = useState<string | null>(null)
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState('')
@@ -59,6 +71,40 @@ export default function JournalPage() {
   useEffect(() => {
     loadTrades()
   }, [loadTrades])
+
+  // When the lightbox opens, pick a sensible default tab and prefetch the
+  // proxy chart so the Auto tab is ready when the user switches to it.
+  useEffect(() => {
+    if (!lightboxTrade) {
+      setAutoChart(null)
+      setAutoChartError(null)
+      setAutoChartLoading(false)
+      return
+    }
+    const hasEntry = !!lightboxTrade.entry_chart_url
+    const hasExit  = !!lightboxTrade.exit_chart_url
+    setLightboxTab(hasEntry ? 'entry' : hasExit ? 'exit' : 'auto')
+
+    let cancelled = false
+    setAutoChart(null)
+    setAutoChartError(null)
+    setAutoChartLoading(true)
+    fetch(`/api/trades/${lightboxTrade.id}/chart`)
+      .then(async (r) => {
+        const data = await r.json()
+        if (cancelled) return
+        if (!r.ok) {
+          setAutoChartError(data.error ?? 'Failed to load chart')
+        } else {
+          setAutoChart(data as TradeChartResponse)
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setAutoChartError(e instanceof Error ? e.message : 'Failed to load chart')
+      })
+      .finally(() => { if (!cancelled) setAutoChartLoading(false) })
+    return () => { cancelled = true }
+  }, [lightboxTrade])
 
   const filteredTrades = trades.filter((t) => {
     if (filterDateFrom && t.date < filterDateFrom) return false
@@ -622,44 +668,73 @@ export default function JournalPage() {
       >
         {lightboxTrade && (() => {
           const hasEntry = !!lightboxTrade.entry_chart_url
-          const hasExit = !!lightboxTrade.exit_chart_url
-          const hasBoth = hasEntry && hasExit
-          const activeUrl = lightboxTab === 'entry' ? lightboxTrade.entry_chart_url : lightboxTrade.exit_chart_url
+          const hasExit  = !!lightboxTrade.exit_chart_url
+          const activeUrl =
+            lightboxTab === 'entry' ? lightboxTrade.entry_chart_url :
+            lightboxTab === 'exit'  ? lightboxTrade.exit_chart_url  : null
+
+          const TabButton = ({ tab, label, icon }: { tab: 'entry' | 'exit' | 'auto'; label: string; icon: React.ReactNode }) => (
+            <button
+              onClick={() => setLightboxTab(tab)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition',
+                lightboxTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white',
+              )}
+            >
+              {icon}
+              {label}
+            </button>
+          )
 
           return (
             <div className="space-y-4">
-              {/* Tabs (only shown when both images exist) */}
-              {hasBoth && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setLightboxTab('entry')}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition',
-                      lightboxTab === 'entry'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-800 text-gray-400 hover:text-white'
-                    )}
-                  >
-                    <Camera className="h-3.5 w-3.5" />
-                    Entry Chart
-                  </button>
-                  <button
-                    onClick={() => setLightboxTab('exit')}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition',
-                      lightboxTab === 'exit'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-800 text-gray-400 hover:text-white'
-                    )}
-                  >
-                    <Camera className="h-3.5 w-3.5" />
-                    Exit Chart
-                  </button>
-                </div>
-              )}
+              {/* Tabs */}
+              <div className="flex gap-2">
+                {hasEntry && <TabButton tab="entry" label="Entry Chart" icon={<Camera className="h-3.5 w-3.5" />} />}
+                {hasExit  && <TabButton tab="exit"  label="Exit Chart"  icon={<Camera className="h-3.5 w-3.5" />} />}
+                <TabButton tab="auto" label="Auto Chart" icon={<LineChart className="h-3.5 w-3.5" />} />
+              </div>
 
-              {/* Full-size image */}
-              {activeUrl ? (
+              {/* Body */}
+              {lightboxTab === 'auto' ? (
+                <div className="space-y-2">
+                  {autoChartLoading && (
+                    <div className="bg-gray-900/40 border border-gray-700/40 rounded-xl flex items-center justify-center h-[420px]">
+                      <div className="text-center">
+                        <RefreshCw className="h-6 w-6 text-blue-400 animate-spin mx-auto mb-2" />
+                        <p className="text-sm text-gray-400">Loading proxy chart…</p>
+                      </div>
+                    </div>
+                  )}
+                  {autoChartError && !autoChartLoading && (
+                    <div className="bg-red-900/20 border border-red-700/40 rounded-xl p-5 flex items-start gap-3">
+                      <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-red-300">{autoChartError}</p>
+                    </div>
+                  )}
+                  {autoChart && !autoChartLoading && (
+                    <>
+                      <div className="bg-gray-900/40 border border-gray-700/40 rounded-xl p-3">
+                        <CandlestickChart
+                          candles={autoChart.candles}
+                          entryPrice={autoChart.entryPrice}
+                          exitPrice={autoChart.exitPrice}
+                          stopPrice={autoChart.stopProxyPrice ?? undefined}
+                          targetPrice={autoChart.targetProxyPrice ?? undefined}
+                          entryTimestamp={autoChart.entryTimestamp}
+                          exitTimestamp={autoChart.exitTimestamp}
+                          direction={autoChart.direction}
+                          height={420}
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-500">
+                        {autoChart.ticker} {autoChart.interval.multiplier}-{autoChart.interval.timespan} ·{' '}
+                        {autoChart.proxyNote}. Stop/Target lines are scaled to the proxy via the entry-bar ratio.
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : activeUrl ? (
                 <div className="relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -667,9 +742,7 @@ export default function JournalPage() {
                     alt={lightboxTab === 'entry' ? 'Entry chart' : 'Exit chart'}
                     className="w-full rounded-xl border border-gray-700/50 max-h-[70vh] object-contain bg-gray-950"
                   />
-
-                  {/* Prev / next arrows when both charts exist */}
-                  {hasBoth && (
+                  {hasEntry && hasExit && (
                     <>
                       <button
                         onClick={() => setLightboxTab(lightboxTab === 'entry' ? 'exit' : 'entry')}
@@ -697,8 +770,9 @@ export default function JournalPage() {
               {/* Footer: label + open-in-new-tab */}
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-500">
-                  {lightboxTab === 'entry' ? 'Entry' : 'Exit'} chart
-                  {hasBoth && ` · ${lightboxTab === 'entry' ? '1' : '2'} of 2`}
+                  {lightboxTab === 'entry' ? 'Entry chart' :
+                   lightboxTab === 'exit'  ? 'Exit chart'  :
+                   `Auto chart from polygon.io`}
                 </p>
                 {activeUrl && (
                   <a
