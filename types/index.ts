@@ -180,6 +180,36 @@ export interface ApexAccount {
   updated_at: string
 }
 
+export interface WeeklyReviewContent {
+  summary: string
+  system_compliance: {
+    score: number
+    wins: string[]
+    violations: string[]
+  }
+  setup_breakdown: Array<{
+    setup: string
+    trades: number
+    win_rate: number
+    pnl: number
+    key_insight: string
+  }>
+  emotional_trends: string
+  top_lessons: string[]
+  next_week_focus: string[]
+}
+
+export interface WeeklyReview {
+  id: string
+  user_id: string
+  week_start_date: string
+  week_end_date: string
+  review: WeeklyReviewContent
+  trade_count: number
+  total_pnl: number
+  created_at: string
+}
+
 export interface BlindBacktestSession {
   id: string
   user_id: string

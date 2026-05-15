@@ -17,6 +17,7 @@ import {
   Moon,
   FlaskConical,
   Target,
+  CalendarRange,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -28,6 +29,7 @@ const navItems = [
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/apex', label: 'Apex Tracker', icon: Target },
   { href: '/playbook', label: 'Playbook', icon: BookMarked },
+  { href: '/weekly-review', label: 'Weekly Review', icon: CalendarRange },
   { href: '/patterns', label: 'AI Patterns', icon: Brain },
   { href: '/backtest', label: 'Backtest', icon: FlaskConical },
   { href: '/settings', label: 'Settings', icon: Settings },
