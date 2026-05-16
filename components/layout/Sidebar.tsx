@@ -18,6 +18,7 @@ import {
   FlaskConical,
   Target,
   CalendarRange,
+  Fingerprint,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -31,6 +32,7 @@ const navItems = [
   { href: '/playbook', label: 'Playbook', icon: BookMarked },
   { href: '/weekly-review', label: 'Weekly Review', icon: CalendarRange },
   { href: '/patterns', label: 'AI Patterns', icon: Brain },
+  { href: '/trade-dna', label: 'Trade DNA', icon: Fingerprint },
   { href: '/backtest', label: 'Backtest', icon: FlaskConical },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
