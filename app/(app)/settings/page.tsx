@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { RiskRules, ChecklistItem, Trade } from '@/types'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, GripVertical, Download, Search, Bell, BellOff, RotateCcw } from 'lucide-react'
+import { Plus, Trash2, GripVertical, Download, Search, Bell, BellOff, RotateCcw, Wifi, WifiOff, RefreshCw, Unplug } from 'lucide-react'
 import { STORAGE_KEY as NOTIF_KEY } from '@/components/dashboard/SessionCloseNotifier'
 import { format, parseISO } from 'date-fns'
 import { SYSTEM_CHECKLIST_ITEMS } from '@/lib/trading-system'
@@ -31,6 +31,16 @@ export default function SettingsPage() {
   const [postLossDay, setPostLossDay] = useState(false)
   const [accountType, setAccountType] = useState<'Evaluation' | 'PA' | null>(null)
   const [resetingChecklist, setResetingChecklist] = useState(false)
+
+  // Broker sync state
+  type SyncStatus = { connected: boolean; username?: string; lastSync?: string | null; syncEnabled?: boolean }
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
+  const [syncLoading, setSyncLoading] = useState(true)
+  const [brokerUsername, setBrokerUsername] = useState('')
+  const [brokerPassword, setBrokerPassword] = useState('')
+  const [connecting, setConnecting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
 
   // Risk form state
   const [maxDailyLoss, setMaxDailyLoss] = useState('500')
@@ -237,6 +247,74 @@ export default function SettingsPage() {
     setSearchResults(results.slice(0, 10))
   }, [searchQuery, allTrades])
 
+  // ── Broker sync handlers ──────────────────────────────────────────────────
+  const loadSyncStatus = useCallback(async () => {
+    setSyncLoading(true)
+    try {
+      const res = await fetch('/api/tradovate/status')
+      const data = await res.json()
+      setSyncStatus(data)
+    } catch {
+      setSyncStatus({ connected: false })
+    } finally {
+      setSyncLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadSyncStatus() }, [loadSyncStatus])
+
+  async function handleConnect() {
+    if (!brokerUsername.trim() || !brokerPassword) return
+    setConnecting(true)
+    try {
+      const res = await fetch('/api/tradovate/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: brokerUsername.trim(), password: brokerPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Connection failed')
+      toast.success('Connected to Tradovate')
+      setBrokerUsername('')
+      setBrokerPassword('')
+      await loadSyncStatus()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Connection failed')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Disconnect Tradovate? Auto-sync will stop.')) return
+    setDisconnecting(true)
+    try {
+      const res = await fetch('/api/tradovate/disconnect', { method: 'POST' })
+      if (!res.ok) throw new Error('Disconnect failed')
+      toast.success('Disconnected')
+      await loadSyncStatus()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Disconnect failed')
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  async function handleManualSync() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/tradovate/sync', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Sync failed')
+      toast.success(`Sync complete — ${data.inserted ?? 0} new trades imported`)
+      await loadSyncStatus()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   return (
     <div className="space-y-8 max-w-2xl">
       <div>
@@ -246,10 +324,83 @@ export default function SettingsPage() {
 
       {/* Broker Sync */}
       <section className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
-        <h2 className="text-base font-semibold text-white mb-2">Broker Sync</h2>
-        <p className="text-sm text-gray-400">
-          Automatic broker sync requires a live funded Tradovate account with API access enabled. Currently using CSV import.
+        <h2 className="text-base font-semibold text-white mb-1">Broker Sync</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Connects to your Tradovate account for automatic fill sync. Available for Apex PA (funded) accounts.
+          Evaluation accounts use CSV import below.
         </p>
+
+        {syncLoading ? (
+          <p className="text-sm text-gray-500">Checking connection...</p>
+        ) : syncStatus?.connected ? (
+          /* ── Connected state ── */
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Wifi className="h-4 w-4 text-emerald-400" />
+              <span className="text-sm text-emerald-400 font-medium">Connected</span>
+              <span className="text-xs text-gray-500">as {syncStatus.username}</span>
+            </div>
+            {syncStatus.lastSync && (
+              <p className="text-xs text-gray-500">
+                Last sync: {new Date(syncStatus.lastSync).toLocaleString()}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleManualSync}
+                disabled={syncing}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', syncing && 'animate-spin')} />
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 text-sm font-semibold rounded-lg transition"
+              >
+                <Unplug className="h-3.5 w-3.5" />
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── Connect form ── */
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-3">
+              <WifiOff className="h-4 w-4 text-gray-500" />
+              <span className="text-sm text-gray-500">Not connected</span>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Tradovate Username</label>
+              <input
+                type="text"
+                value={brokerUsername}
+                onChange={(e) => setBrokerUsername(e.target.value)}
+                placeholder="your@email.com"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Password</label>
+              <input
+                type="password"
+                value={brokerPassword}
+                onChange={(e) => setBrokerPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <button
+              onClick={handleConnect}
+              disabled={connecting || !brokerUsername.trim() || !brokerPassword}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
+            >
+              <Wifi className="h-3.5 w-3.5" />
+              {connecting ? 'Connecting...' : 'Connect'}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Apex Account Type */}

@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { POINT_VALUES } from './tradovate-parser'
 import type { ParsedTrade } from './tradovate-parser'
 
-const BASE_URL = 'https://demo.tradovateapi.com/v1'
+const BASE_URL = 'https://live.tradovateapi.com/v1'
 const COMMISSION_PER_CONTRACT = 4.10
 
 // ── Encryption ───────────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ interface AuthResponse {
   expirationTime?: string
   p?: string
   d?: string
+  errorText?: string
 }
 
 export async function authenticate(
@@ -58,7 +59,10 @@ export async function authenticate(
   }
 
   const data: AuthResponse = await res.json()
-  if (!data.accessToken) throw new Error(data.d ?? data.p ?? 'Authentication failed — check credentials')
+if (!data.accessToken) {
+    const detail = data.errorText ?? data.d ?? data.p ?? ''
+    throw new Error(detail || 'Authentication failed — check credentials')
+  }
 
   return {
     accessToken: data.accessToken,
