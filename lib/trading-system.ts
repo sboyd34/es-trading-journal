@@ -22,7 +22,6 @@ export const SYSTEM_CHECKLIST_ITEMS = [
   '5m trigger confirmed?',
   'Real location (not POC, mid-value, or chop)?',
   'Room to target?',
-  'Inside approved time window?',
   'Following setup priority order?',
   'Calm mind, no P&L urgency?',
   'OR width adequate (at least 30% of prior day ATR)?',
@@ -45,7 +44,7 @@ Approved Time Windows (CT):
 - 10:30–11:00: A+ continuation or retest only
 - 11:00–12:30: Dead zone — no trades
 - 12:30–14:00: Secondary window — only if: morning had clear directional move AND no macro events 12:00–14:30 AND 15m VWAP slope aligned with 1H bias
-- After 14:00: Session closed — no trades
+- 14:00–15:15: Closing drive — valid if: clear directional momentum into close AND 1H bias confirmed AND not chasing exhausted move
 
 Setup Priority (trade in this order, do not skip):
 1. 15-minute ORB (Break → Retest → 5m confirmation → Enter; OR must be ≥30% of prior day ATR)
@@ -70,9 +69,9 @@ Hard Operating Rule — must confirm ALL FIVE before every trade:
 Cannot state all five = no trade. Period.
 
 Grade Rubric:
-A grade: 1H bias clear and aligned, correct setup from priority list, approved location with room, Break→Retest→Confirm→Enter sequence followed, inside approved time window, emotionally flat
+A grade: 1H bias clear and aligned, correct setup from priority list, approved location with room, Break→Retest→Confirm→Enter sequence followed, emotionally flat
 B grade: One minor deviation — slightly early entry, Tier 2 location without extra confirmation candle, or small size adjustment
-C grade: ANY of these: POC/mid-value/chop entry, wrong time window, no bias or wrong direction vs bias, chased extended candle, entered on bubble/fire alone, FOMO or revenge state, blind-touch trade
+C grade: ANY of these: POC/mid-value/chop entry, no bias or wrong direction vs bias, chased extended candle, entered on bubble/fire alone, FOMO or revenge state, blind-touch trade
 
 Apex 50K Risk Framework:
 - Evaluation: hard stop -$250, soft stop -$150, max 2 trades/day, default risk $100/trade (base 1 ES or 2 MES)
