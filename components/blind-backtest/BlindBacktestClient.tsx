@@ -13,6 +13,9 @@ import {
 import type { Candle } from './CandlestickChart'
 import ImageUploadSlot from '@/components/ui/ImageUploadSlot'
 import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
+import PreTradeChecklist, { ChecklistValues, EMPTY_CHECKLIST } from './PreTradeChecklist'
+import PlaybackControls, { PlaybackSpeed } from './PlaybackControls'
+import MistakeSelector, { MistakeType } from './MistakeSelector'
 
 const CHART_BUCKET = 'trade-charts'
 
@@ -22,7 +25,7 @@ const StatsView = dynamic(() => import('./StatsView'), { ssr: false })
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Phase = 'home' | 'session-setup' | 'charting' | 'reveal' | 'grading' | 'complete'
+type Phase = 'home' | 'session-setup' | 'charting' | 'checklist' | 'playback' | 'reveal' | 'grading' | 'complete'
 type HomeTab = 'overview' | 'stats'
 
 interface SessionConfig {
@@ -234,6 +237,19 @@ export default function BlindBacktestClient() {
   )
   const [saving, setSaving] = useState(false)
 
+  // Checklist phase — locked-in trade plan, source of truth from checklist forward
+  const [checklist, setChecklist] = useState<ChecklistValues>(EMPTY_CHECKLIST)
+
+  // Playback phase
+  const [replayIndex, setReplayIndex] = useState(0)
+  const [entryBarIndex, setEntryBarIndex] = useState(0)
+  const [playbackPlaying, setPlaybackPlaying] = useState(false)
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1)
+
+  // Grading additions
+  const [mistakeType, setMistakeType] = useState<MistakeType | ''>('')
+  const [mistakeOther, setMistakeOther] = useState('')
+
   // Complete phase
   const [sessionNote, setSessionNote] = useState('')
   const [sessionNoteLoading, setSessionNoteLoading] = useState(false)
@@ -345,48 +361,136 @@ export default function BlindBacktestClient() {
     return Object.values(form).every((v) => v.trim() !== '')
   }, [form])
 
-  async function handleSubmitPlan() {
-    if (!formValid || !chartData) return
-    setSubmitting(true)
-    try {
-      const entry  = parseFloat(form.entryPrice)
-      const stop   = parseFloat(form.stopPrice)
-      const target = parseFloat(form.targetPrice)
+  // Charting → checklist (lock in plan candidate, surface explicit pillar gate)
+  const goToChecklist = useCallback(() => {
+    if (!formValid) return
+    setChecklist({
+      bias: form.bias,
+      setup: form.setup,
+      trigger: form.trigger,
+      location: form.location,
+      entryPrice: form.entryPrice,
+      stopPrice: form.stopPrice,
+      targetPrice: form.targetPrice,
+      direction: (form.direction === 'long' || form.direction === 'short') ? form.direction : '',
+      confidence: form.confidence,
+    })
+    setPhase('checklist')
+  }, [form, formValid])
 
-      // Calculate outcome from after-cutoff candles
-      const afterCutoff = chartData.fullCandles.slice(chartData.cutoffIndex + 1)
-      const result = calculateOutcome(afterCutoff, entry, stop, target, form.direction, config.contractType)
-      setOutcome(result)
-      setPhase('reveal')
+  // Checklist → playback (trade goes live)
+  const handleStartPlayback = useCallback(() => {
+    if (!chartData) return
+    const startIdx = chartData.cutoffIndex
+    setEntryBarIndex(startIdx)
+    setReplayIndex(startIdx)
+    setPlaybackPlaying(true)
+    setPhase('playback')
+  }, [chartData])
 
-      // Fetch AI grade in background
-      setAiGrading(true)
-      fetch('/api/claude/blind-grade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trade_bias: form.bias,
-          trade_setup: form.setup,
-          trade_trigger: form.trigger,
-          trade_location: form.location,
-          trade_risk: form.risk,
-          entry_price: entry,
-          stop_price: stop,
-          target_price: target,
-          direction: form.direction,
-          confidence: parseInt(form.confidence),
-          outcome: result.outcome,
-        }),
+  // Playback → reveal: compute outcome, fetch AI grade, transition
+  const resolveAndReveal = useCallback((finalBarIndex: number) => {
+    if (!chartData) return
+    setPlaybackPlaying(false)
+    const afterEntry = chartData.fullCandles.slice(entryBarIndex + 1, finalBarIndex + 1)
+    const entry  = parseFloat(checklist.entryPrice)
+    const stop   = parseFloat(checklist.stopPrice)
+    const target = parseFloat(checklist.targetPrice)
+    const result = calculateOutcome(afterEntry, entry, stop, target, checklist.direction, config.contractType)
+    setOutcome(result)
+    setPhase('reveal')
+
+    // Fetch AI grade in background using locked-in checklist values
+    setAiGrading(true)
+    fetch('/api/claude/blind-grade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trade_bias: checklist.bias,
+        trade_setup: checklist.setup,
+        trade_trigger: checklist.trigger,
+        trade_location: checklist.location,
+        trade_risk: form.risk,
+        entry_price: entry,
+        stop_price: stop,
+        target_price: target,
+        direction: checklist.direction,
+        confidence: parseInt(checklist.confidence),
+        outcome: result.outcome,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.grade) setAiGrade({ grade: d.grade, well: d.well, improve: d.improve })
       })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.grade) setAiGrade({ grade: d.grade, well: d.well, improve: d.improve })
-        })
-        .finally(() => setAiGrading(false))
-    } finally {
-      setSubmitting(false)
-    }
-  }
+      .finally(() => setAiGrading(false))
+  }, [chartData, entryBarIndex, checklist, form.risk, config.contractType])
+
+  // Bail mid-playback — outcome is SCRATCH at current bar's close
+  const handleBail = useCallback(() => {
+    if (!chartData) return
+    setPlaybackPlaying(false)
+    const c = chartData.fullCandles[replayIndex]
+    const entry = parseFloat(checklist.entryPrice)
+    const stop  = parseFloat(checklist.stopPrice)
+    const pv = config.contractType === 'MES' ? 5 : 50
+    const pnl  = checklist.direction === 'long' ? (c.c - entry) * pv : (entry - c.c) * pv
+    const risk = Math.abs(entry - stop) * pv
+    setOutcome({
+      outcome: 'SCRATCH', exitPrice: c.c, grossPnl: pnl, rMultiple: risk > 0 ? pnl / risk : 0,
+      mfe: 0, mae: 0,
+    })
+    setPhase('reveal')
+  }, [chartData, replayIndex, checklist, config.contractType])
+
+  // Manual step — advance exactly one bar; auto-resolve if it triggers stop/target/end
+  const handleStep = useCallback(() => {
+    if (!chartData) return
+    setReplayIndex((prev) => {
+      const next = Math.min(prev + 1, chartData.fullCandles.length - 1)
+      const entry  = parseFloat(checklist.entryPrice)
+      const stop   = parseFloat(checklist.stopPrice)
+      const target = parseFloat(checklist.targetPrice)
+      const c = chartData.fullCandles[next]
+      const dir = checklist.direction
+      const stopHit = dir === 'long' ? c.l <= stop : c.h >= stop
+      const targetHit = dir === 'long' ? c.h >= target : c.l <= target
+      if (stopHit || targetHit || next === chartData.fullCandles.length - 1) {
+        window.setTimeout(() => resolveAndReveal(next), 0)
+      }
+      return next
+    })
+  }, [chartData, checklist, resolveAndReveal])
+
+  // Playback loop — advances replayIndex while playing, halts on stop/target/end
+  useEffect(() => {
+    if (phase !== 'playback' || !playbackPlaying || !chartData) return
+
+    const intervalMs = 1000 / playbackSpeed
+    const id = window.setInterval(() => {
+      setReplayIndex((prev) => {
+        const next = prev + 1
+        if (next >= chartData.fullCandles.length) {
+          window.setTimeout(() => resolveAndReveal(chartData.fullCandles.length - 1), 0)
+          return chartData.fullCandles.length - 1
+        }
+        const entry  = parseFloat(checklist.entryPrice)
+        const stop   = parseFloat(checklist.stopPrice)
+        const target = parseFloat(checklist.targetPrice)
+        const c = chartData.fullCandles[next]
+        const dir = checklist.direction
+        const stopHit = dir === 'long' ? c.l <= stop : c.h >= stop
+        const targetHit = dir === 'long' ? c.h >= target : c.l <= target
+        if (stopHit || targetHit) {
+          window.setTimeout(() => resolveAndReveal(next), 0)
+        }
+        return next
+      })
+    }, intervalMs)
+
+    return () => window.clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, playbackPlaying, playbackSpeed, chartData])
 
   // ── Save trade + advance (grading → charting or complete) ─────────────────
 
@@ -429,6 +533,11 @@ export default function BlindBacktestClient() {
           notes:             gradeNotes || null,
           reflection:        gradeReflection || null,
           chart_url:         gradeChartUrl ? gradeChartUrl.split('?')[0] : null,
+          mistake_type:      mistakeType || null,
+          mistake_other:     mistakeType === 'Other' ? (mistakeOther || null) : null,
+          bars_held:         replayIndex - entryBarIndex,
+          entry_bar_index:   entryBarIndex,
+          playback_mode:     'B',
         }),
       })
       const data = await res.json()
@@ -470,6 +579,13 @@ export default function BlindBacktestClient() {
       typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`
     )
     setChartData(null)
+    setChecklist(EMPTY_CHECKLIST)
+    setReplayIndex(0)
+    setEntryBarIndex(0)
+    setPlaybackPlaying(false)
+    setPlaybackSpeed(1)
+    setMistakeType('')
+    setMistakeOther('')
   }
 
   // ── Grading chart upload ─────────────────────────────────────────────────
@@ -1089,8 +1205,8 @@ export default function BlindBacktestClient() {
               </div>
 
               <button
-                onClick={handleSubmitPlan}
-                disabled={!formValid || submitting}
+                onClick={goToChecklist}
+                disabled={!formValid}
                 className={cn(
                   'w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2',
                   formValid
@@ -1098,11 +1214,77 @@ export default function BlindBacktestClient() {
                     : 'bg-gray-700/50 text-gray-500 cursor-not-allowed',
                 )}
               >
-                {submitting ? 'Calculating outcome…' : formValid ? 'Submit Trade Plan →' : 'Complete all fields to continue'}
+                {formValid ? 'Review Plan & Go Live →' : 'Complete all fields to continue'}
               </button>
             </div>
           </>
         )}
+      </div>
+    )
+  }
+
+  // ── PHASE: checklist ──────────────────────────────────────────────────────
+
+  if (phase === 'checklist' && chartData) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-white">Lock In Your Plan</h2>
+          <ProgressBar />
+        </div>
+        <div className="rounded-lg border border-gray-700 bg-gray-900/30 p-3 text-sm text-gray-300">
+          Reading complete. Verify all five pillars — when you hit play, the trade is live and you cannot change the plan.
+        </div>
+        <PreTradeChecklist
+          values={checklist}
+          onChange={setChecklist}
+          onStartPlayback={handleStartPlayback}
+        />
+        <button
+          onClick={() => setPhase('charting')}
+          className="text-xs text-gray-500 hover:text-gray-300 underline"
+        >
+          ← back to charting
+        </button>
+      </div>
+    )
+  }
+
+  // ── PHASE: playback ───────────────────────────────────────────────────────
+
+  if (phase === 'playback' && chartData) {
+    const dirNarrow = checklist.direction === 'long' || checklist.direction === 'short'
+      ? checklist.direction
+      : undefined
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-white">
+            Live — {checklist.direction === 'long' ? '▲ Long' : '▼ Short'} {checklist.setup}
+          </h2>
+          <ProgressBar />
+        </div>
+        <CandlestickChart
+          candles={chartData.fullCandles}
+          visibleCount={replayIndex + 1}
+          entryPrice={parseFloat(checklist.entryPrice)}
+          stopPrice={parseFloat(checklist.stopPrice)}
+          targetPrice={parseFloat(checklist.targetPrice)}
+          cutoffTimestamp={chartData.fullCandles[entryBarIndex]?.t}
+          direction={dirNarrow}
+          indicators={indicatorPrefs}
+          height={380}
+        />
+        <PlaybackControls
+          playing={playbackPlaying}
+          speed={playbackSpeed}
+          currentBar={replayIndex - entryBarIndex}
+          totalBars={chartData.fullCandles.length - entryBarIndex - 1}
+          onTogglePlay={() => setPlaybackPlaying((p) => !p)}
+          onSpeedChange={setPlaybackSpeed}
+          onStep={handleStep}
+          onBail={handleBail}
+        />
       </div>
     )
   }
@@ -1290,6 +1472,16 @@ export default function BlindBacktestClient() {
             <textarea value={gradeReflection} onChange={(e) => setGradeReflection(e.target.value)} rows={2}
               placeholder="Reflection on process and execution…"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 resize-none" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-2">Mistake Tag</label>
+            <MistakeSelector
+              value={mistakeType}
+              otherText={mistakeOther}
+              onValueChange={setMistakeType}
+              onOtherChange={setMistakeOther}
+            />
           </div>
 
           <div>

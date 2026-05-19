@@ -81,6 +81,7 @@ export default function CandlestickChart({
 
     return () => {
       cleanedUp = true
+      chartRef.current?.observer.disconnect()
       chartRef.current?.chart.remove()
       chartRef.current = null
     }
@@ -234,8 +235,15 @@ async function initChart(
 
   chart.timeScale().fitContent()
 
+  let disposed = false
   const observer = new ResizeObserver(() => {
-    chart.applyOptions({ width: el.clientWidth })
+    if (disposed) return
+    try {
+      chart.applyOptions({ width: el.clientWidth })
+    } catch {
+      // chart was removed between disconnect() being called and this callback firing
+      disposed = true
+    }
   })
   observer.observe(el)
 
