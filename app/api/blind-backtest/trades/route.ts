@@ -39,6 +39,11 @@ export async function POST(request: NextRequest) {
       notes,
       reflection,
       chart_url,
+      mistake_type,
+      mistake_other,
+      bars_held,
+      entry_bar_index,
+      playback_mode,
     } = body
 
     const { data, error } = await supabase
@@ -72,6 +77,11 @@ export async function POST(request: NextRequest) {
         notes,
         reflection,
         chart_url,
+        mistake_type,
+        mistake_other,
+        bars_held,
+        entry_bar_index,
+        playback_mode: playback_mode ?? 'B',
       })
       .select()
       .single()
