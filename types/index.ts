@@ -263,6 +263,11 @@ export interface BlindBacktestTrade {
   mood: string | null
   notes: string | null
   reflection: string | null
+  mistake_type:    string | null
+  mistake_other:   string | null
+  bars_held:       number | null
+  entry_bar_index: number | null
+  playback_mode:   'A' | 'B'
   chart_url: string | null
   created_at: string
 }
