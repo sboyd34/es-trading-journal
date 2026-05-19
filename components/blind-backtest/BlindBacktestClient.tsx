@@ -218,7 +218,6 @@ export default function BlindBacktestClient() {
   const [chartLoading, setChartLoading] = useState(false)
   const [chartError, setChartError] = useState<string | null>(null)
   const [form, setForm] = useState<TradeForm>(EMPTY_FORM)
-  const [submitting, setSubmitting] = useState(false)
 
   // Reveal phase
   const [outcome, setOutcome] = useState<OutcomeData | null>(null)
@@ -448,7 +447,6 @@ export default function BlindBacktestClient() {
     if (!chartData) return
     setReplayIndex((prev) => {
       const next = Math.min(prev + 1, chartData.fullCandles.length - 1)
-      const entry  = parseFloat(checklist.entryPrice)
       const stop   = parseFloat(checklist.stopPrice)
       const target = parseFloat(checklist.targetPrice)
       const c = chartData.fullCandles[next]
@@ -474,7 +472,6 @@ export default function BlindBacktestClient() {
           window.setTimeout(() => resolveAndReveal(chartData.fullCandles.length - 1), 0)
           return chartData.fullCandles.length - 1
         }
-        const entry  = parseFloat(checklist.entryPrice)
         const stop   = parseFloat(checklist.stopPrice)
         const target = parseFloat(checklist.targetPrice)
         const c = chartData.fullCandles[next]
