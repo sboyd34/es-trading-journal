@@ -410,6 +410,67 @@ export default function StatsView({ trades, loading }: Props) {
             </div>
           )}
         </div>
+
+        {/* Mistakes Breakdown — silent if no trades tagged yet */}
+        {(() => {
+          const tagged = trades.filter((t) => t.mistake_type)
+          if (tagged.length === 0) return null
+
+          const byMistake = new Map<string, { count: number; rSum: number; rCount: number; wins: number }>()
+          for (const t of tagged) {
+            const key = t.mistake_type ?? 'Unknown'
+            const existing = byMistake.get(key) ?? { count: 0, rSum: 0, rCount: 0, wins: 0 }
+            existing.count++
+            if (t.outcome === 'WIN') existing.wins++
+            if (t.r_multiple != null) {
+              existing.rSum += t.r_multiple
+              existing.rCount++
+            }
+            byMistake.set(key, existing)
+          }
+          const rows = Array.from(byMistake.entries())
+            .map(([k, v]) => ({ key: k, count: v.count, wins: v.wins, avgR: v.rCount > 0 ? v.rSum / v.rCount : null }))
+            .sort((a, b) => b.count - a.count)
+
+          const topMistake = rows.find((r) => r.key !== 'Clean — no mistake, just a loss')
+
+          return (
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-200">Mistakes Breakdown</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Where the discipline breaks down — count, wins, and R-multiple by tag</p>
+                {topMistake && (
+                  <p className="text-xs text-yellow-400 mt-2">
+                    Most frequent: <span className="font-semibold">{topMistake.key}</span> ({topMistake.count}× ·{' '}
+                    {topMistake.avgR != null ? `avg ${topMistake.avgR > 0 ? '+' : ''}${topMistake.avgR.toFixed(2)}R` : 'no R data'})
+                  </p>
+                )}
+              </div>
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-500">
+                  <tr className="border-b border-gray-800">
+                    <th className="text-left font-normal pb-2">Mistake</th>
+                    <th className="text-right font-normal pb-2">Count</th>
+                    <th className="text-right font-normal pb-2">Wins</th>
+                    <th className="text-right font-normal pb-2">Avg R</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.key} className="border-t border-gray-800">
+                      <td className="py-1.5 text-gray-200">{r.key}</td>
+                      <td className="py-1.5 text-right text-gray-300 tabular-nums">{r.count}</td>
+                      <td className="py-1.5 text-right text-gray-300 tabular-nums">{r.wins}</td>
+                      <td className={cn('py-1.5 text-right tabular-nums', rColor(r.avgR))}>
+                        {r.avgR == null ? '—' : `${r.avgR > 0 ? '+' : ''}${r.avgR.toFixed(2)}R`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
       </div>
     </div>
   )
