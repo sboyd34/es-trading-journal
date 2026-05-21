@@ -18,6 +18,7 @@ import TradingWindowIndicator from '@/components/dashboard/TradingWindowIndicato
 import MarketNewsFeed from '@/components/dashboard/MarketNewsFeed'
 import ProactiveCoachingCard from '@/components/dashboard/ProactiveCoachingCard'
 import OffSystemDamageCard from '@/components/dashboard/OffSystemDamageCard'
+import DisciplineScoreCard from '@/components/dashboard/DisciplineScoreCard'
 import MarketStateCard from '@/components/market/MarketStateCard'
 
 interface DashboardClientProps {
@@ -25,6 +26,8 @@ interface DashboardClientProps {
   todayTrades: Trade[]
   riskRules: RiskRules
   session: DailySession | null
+  userId: string
+  date: string
 }
 
 function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
@@ -90,7 +93,7 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
   }
 }
 
-export default function DashboardClient({ trades, todayTrades, riskRules, session }: DashboardClientProps) {
+export default function DashboardClient({ trades, todayTrades, riskRules, session, userId, date }: DashboardClientProps) {
   const stats = useMemo(() => computeStats(trades, todayTrades), [trades, todayTrades])
   const [postLossDay, setPostLossDay] = useState(false)
   const [macroEventDetected, setMacroEventDetected] = useState(false)
@@ -149,6 +152,14 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
 
       {/* Off-system damage — silent when there are no F trades this month */}
       <OffSystemDamageCard trades={trades} />
+
+      {/* Discipline score — silent when no trades today */}
+      <DisciplineScoreCard
+        trades={todayTrades}
+        session={session}
+        userId={userId}
+        date={date}
+      />
 
       {/* Session timer */}
       <SessionTimer todayTrades={todayTrades} />

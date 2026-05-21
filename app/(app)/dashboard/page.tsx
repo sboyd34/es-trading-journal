@@ -57,6 +57,8 @@ export default async function DashboardPage() {
       todayTrades={(todayTrades as Trade[]) || []}
       riskRules={(riskRulesData as RiskRules) || defaultRiskRules}
       session={(sessionData as DailySession) || null}
+      userId={user.id}
+      date={today}
     />
   )
 }
