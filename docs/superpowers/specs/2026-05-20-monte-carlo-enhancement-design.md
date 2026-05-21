@@ -48,7 +48,9 @@ interface Props {
 - Remove the `monteCarloResult` useMemo (lines 473–521)
 - Remove the MC tab JSX block (lines 1166–1308)
 - Add import for `MonteCarloTab`
-- Mount: `<MonteCarloTab trades={filteredTrades} riskRules={riskRules} />`
+- Mount: `<MonteCarloTab trades={dateFilteredTrades} riskRules={riskRules} />`
+
+> **Bug fix included:** the current MC useMemo reads from the unfiltered `trades` array, ignoring the date range selector. Passing `dateFilteredTrades` fixes this silently.
 
 ---
 
@@ -87,6 +89,7 @@ Existing: "Trades per path" input + Run/Re-Run button.
 New: "Ruin threshold ($)" number input, pre-filled from `riskRules.max_daily_loss`, defaults to `1500` if no risk rules set.
 
 ### Stat cards — 6 total (up from 4)
+Grid layout: `grid-cols-2 md:grid-cols-3 lg:grid-cols-6` (currently `grid-cols-2 md:grid-cols-4`).
 | Card | Value | Color rule |
 |---|---|---|
 | Prob. of Profit | `X%` | green ≥ 50%, red < 50% |
@@ -115,8 +118,8 @@ New: "Ruin threshold ($)" number input, pre-filled from `riskRules.max_daily_los
 
 ```
 reports/page.tsx
-  filteredTrades, riskRules
-    └─> <MonteCarloTab trades={filteredTrades} riskRules={riskRules} />
+  dateFilteredTrades, riskRules
+    └─> <MonteCarloTab trades={dateFilteredTrades} riskRules={riskRules} />
           mcNumTrades, mcRunCount, mcRuinThreshold (internal state)
             └─> monteCarloResult useMemo
                   fanData, histogram, maxDDHistogram,
