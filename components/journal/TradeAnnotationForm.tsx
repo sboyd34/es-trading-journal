@@ -39,6 +39,7 @@ export default function TradeAnnotationForm({
 }: TradeAnnotationFormProps) {
   const [mood, setMood] = useState<Trade['mood']>(trade.mood)
   const [grade, setGrade] = useState<Trade['grade']>(trade.grade)
+  const [offSystem, setOffSystem] = useState<boolean>(trade.grade === 'F')
   const [showRubric, setShowRubric] = useState(false)
   const [setupTag, setSetupTag] = useState(gateAnswers?.setup || trade.setup_tag || '')
   const [mae, setMae] = useState(trade.mae?.toString() || '')
@@ -188,21 +189,21 @@ export default function TradeAnnotationForm({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mood: mood || null,
-          grade: grade || null,
-          setup_tag: setupTag || null,
-          mae: mae ? parseFloat(mae) : null,
-          mfe: mfe ? parseFloat(mfe) : null,
-          stop_loss: stopLoss ? parseFloat(stopLoss) : null,
-          target: target ? parseFloat(target) : null,
+          mood: offSystem ? null : (mood || null),
+          grade: offSystem ? 'F' : (grade || null),
+          setup_tag: offSystem ? null : (setupTag || null),
+          mae: offSystem ? null : (mae ? parseFloat(mae) : null),
+          mfe: offSystem ? null : (mfe ? parseFloat(mfe) : null),
+          stop_loss: offSystem ? null : (stopLoss ? parseFloat(stopLoss) : null),
+          target: offSystem ? null : (target ? parseFloat(target) : null),
           notes: notes || null,
           reflection: reflection || null,
-          tags: tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+          tags: offSystem ? [] : (tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : []),
           instrument,
           account_id: accountId,
-          entry_chart_url: entryChart ? entryChart.split('?')[0] : null,
-          exit_chart_url: exitChart ? exitChart.split('?')[0] : null,
-          ...(gateAnswers && {
+          entry_chart_url: offSystem ? null : (entryChart ? entryChart.split('?')[0] : null),
+          exit_chart_url: offSystem ? null : (exitChart ? exitChart.split('?')[0] : null),
+          ...(gateAnswers && !offSystem && {
             trade_bias: gateAnswers.bias,
             trade_setup: gateAnswers.setup,
             trade_trigger: gateAnswers.trigger,
@@ -275,77 +276,103 @@ export default function TradeAnnotationForm({
         </div>
       )}
 
-      {/* Mood selector */}
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">Mood</label>
-        <div className="grid grid-cols-4 gap-2">
-          {MOODS.map((m) => (
-            <button
-              key={m}
-              onClick={() => setMood(mood === m ? null : m)}
-              className={cn(
-                'flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg border text-xs transition',
-                mood === m
-                  ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                  : 'border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'
-              )}
-            >
-              <span className="text-lg">{getMoodEmoji(m)}</span>
-              <span className="capitalize">{m}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Grade selector + rubric */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-300">Grade</label>
-          <button
-            type="button"
-            onClick={() => setShowRubric(!showRubric)}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition"
-          >
-            Grade Guide
-            {showRubric ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
-        </div>
-        <div className="flex gap-3 mb-2">
-          {GRADES.map((g) => (
-            <button
-              key={g}
-              onClick={() => setGrade(grade === g ? null : g)}
-              className={cn(
-                'flex-1 py-2 rounded-lg border font-bold text-lg transition',
-                grade === g
-                  ? gradeColors[g]
-                  : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
-              )}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
-        {showRubric && (
-          <div className="mt-2 rounded-lg border border-gray-700/60 bg-gray-900/50 divide-y divide-gray-700/40 text-xs">
-            <div className="p-3">
-              <p className="font-semibold text-emerald-400 mb-1">A — All criteria met</p>
-              <p className="text-gray-400 leading-relaxed">1H bias clear and aligned · Correct setup from priority list · Approved location with room · Break→Retest→Confirm→Enter followed · Inside approved time window · Emotionally flat</p>
-            </div>
-            <div className="p-3">
-              <p className="font-semibold text-yellow-400 mb-1">B — One minor deviation</p>
-              <p className="text-gray-400 leading-relaxed">Slightly early entry · Tier 2 location without extra confirmation candle · Small size adjustment · Otherwise rule-following</p>
-            </div>
-            <div className="p-3">
-              <p className="font-semibold text-red-400 mb-1">C — Rule violation</p>
-              <p className="text-gray-400 leading-relaxed">POC/mid-value/chop entry · Wrong time window · Wrong direction vs bias · Chased extended candle · Entered on bubble/fire alone · FOMO or revenge state · Blind-touch trade</p>
-            </div>
+      {/* Mood selector — hidden when off-system */}
+      {!offSystem && (
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Mood</label>
+          <div className="grid grid-cols-4 gap-2">
+            {MOODS.map((m) => (
+              <button
+                key={m}
+                onClick={() => setMood(mood === m ? null : m)}
+                className={cn(
+                  'flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg border text-xs transition',
+                  mood === m
+                    ? 'border-blue-500 bg-blue-500/20 text-blue-300'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                )}
+              >
+                <span className="text-lg">{getMoodEmoji(m)}</span>
+                <span className="capitalize">{m}</span>
+              </button>
+            ))}
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Grade selector + rubric — hidden when off-system */}
+      {!offSystem && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-300">Grade</label>
+            <button
+              type="button"
+              onClick={() => setShowRubric(!showRubric)}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition"
+            >
+              Grade Guide
+              {showRubric ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
+          </div>
+          <div className="flex gap-3 mb-2">
+            {GRADES.map((g) => (
+              <button
+                key={g}
+                onClick={() => setGrade(grade === g ? null : g)}
+                className={cn(
+                  'flex-1 py-2 rounded-lg border font-bold text-lg transition',
+                  grade === g
+                    ? gradeColors[g]
+                    : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
+                )}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+          {showRubric && (
+            <div className="mt-2 rounded-lg border border-gray-700/60 bg-gray-900/50 divide-y divide-gray-700/40 text-xs">
+              <div className="p-3">
+                <p className="font-semibold text-emerald-400 mb-1">A — All criteria met</p>
+                <p className="text-gray-400 leading-relaxed">1H bias clear and aligned · Correct setup from priority list · Approved location with room · Break→Retest→Confirm→Enter followed · Inside approved time window · Emotionally flat</p>
+              </div>
+              <div className="p-3">
+                <p className="font-semibold text-yellow-400 mb-1">B — One minor deviation</p>
+                <p className="text-gray-400 leading-relaxed">Slightly early entry · Tier 2 location without extra confirmation candle · Small size adjustment · Otherwise rule-following</p>
+              </div>
+              <div className="p-3">
+                <p className="font-semibold text-red-400 mb-1">C — Rule violation</p>
+                <p className="text-gray-400 leading-relaxed">POC/mid-value/chop entry · Wrong time window · Wrong direction vs bias · Chased extended candle · Entered on bubble/fire alone · FOMO or revenge state · Blind-touch trade</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Off-system toggle — F flag */}
+      <div className="rounded-lg border border-gray-700/60 bg-gray-900/40 p-3">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={offSystem}
+            onChange={(e) => {
+              const next = e.target.checked
+              setOffSystem(next)
+              if (!next && grade === 'F') setGrade(null)
+            }}
+            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-800 text-white focus:ring-1 focus:ring-gray-400"
+          />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-200">Off-system trade (F)</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Use when the trade wasn&apos;t one of the 5 setups — a discipline lapse, not a graded execution.
+            </p>
+          </div>
+        </label>
       </div>
 
-      {/* Instrument + Setup tag row */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Instrument (always) + Setup tag (hidden when off-system) */}
+      <div className={cn('grid gap-3', offSystem ? 'grid-cols-1' : 'grid-cols-3')}>
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1">Instrument</label>
           <select
@@ -359,19 +386,21 @@ export default function TradeAnnotationForm({
             <option value="MNQ">MNQ ($2/pt)</option>
           </select>
         </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-gray-400 mb-1">Setup Tag</label>
-          <select
-            value={setupTag}
-            onChange={(e) => setSetupTag(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select setup...</option>
-            {SYSTEM_SETUPS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
+        {!offSystem && (
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-400 mb-1">Setup Tag</label>
+            <select
+              value={setupTag}
+              onChange={(e) => setSetupTag(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select setup...</option>
+              {SYSTEM_SETUPS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Apex account */}
@@ -393,58 +422,62 @@ export default function TradeAnnotationForm({
         </div>
       )}
 
-      {/* MAE / MFE / SL / Target */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">MAE (pts)</label>
-          <input
-            type="number"
-            step="0.25"
-            value={mae}
-            onChange={(e) => setMae(e.target.value)}
-            placeholder="0.00"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      {/* MAE / MFE / SL / Target — hidden when off-system */}
+      {!offSystem && (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">MAE (pts)</label>
+            <input
+              type="number"
+              step="0.25"
+              value={mae}
+              onChange={(e) => setMae(e.target.value)}
+              placeholder="0.00"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">MFE (pts)</label>
+            <input
+              type="number"
+              step="0.25"
+              value={mfe}
+              onChange={(e) => setMfe(e.target.value)}
+              placeholder="0.00"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss</label>
+            <input
+              type="number"
+              step="0.25"
+              value={stopLoss}
+              onChange={(e) => setStopLoss(e.target.value)}
+              placeholder="Price level"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Target</label>
+            <input
+              type="number"
+              step="0.25"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="Price level"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">MFE (pts)</label>
-          <input
-            type="number"
-            step="0.25"
-            value={mfe}
-            onChange={(e) => setMfe(e.target.value)}
-            placeholder="0.00"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss</label>
-          <input
-            type="number"
-            step="0.25"
-            value={stopLoss}
-            onChange={(e) => setStopLoss(e.target.value)}
-            placeholder="Price level"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">Target</label>
-          <input
-            type="number"
-            step="0.25"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            placeholder="Price level"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
+      )}
 
       {/* Notes with voice input */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-sm font-medium text-gray-300">Notes</label>
+          <label className="text-sm font-medium text-gray-300">
+            {offSystem ? 'What made you enter this trade?' : 'Notes'}
+          </label>
           <button
             type="button"
             onClick={toggleRecording}
@@ -478,20 +511,30 @@ export default function TradeAnnotationForm({
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          rows={2}
-          placeholder="What was the trade thesis? Market context?"
+          rows={offSystem ? 3 : 2}
+          placeholder={
+            offSystem
+              ? "Boredom, FOMO, news pop, pattern that looked good but wasn't on the list…"
+              : 'What was the trade thesis? Market context?'
+          }
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
         />
       </div>
 
       {/* Post-trade reflection */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1.5">Post-Trade Reflection</label>
+        <label className="block text-sm font-medium text-gray-300 mb-1.5">
+          {offSystem ? 'Post-trade notes — what did you learn?' : 'Post-Trade Reflection'}
+        </label>
         <textarea
           value={reflection}
           onChange={(e) => setReflection(e.target.value)}
           rows={3}
-          placeholder="What did you do well? What would you do differently?"
+          placeholder={
+            offSystem
+              ? 'What was the cost? What would have stopped you?'
+              : 'What did you do well? What would you do differently?'
+          }
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
         />
       </div>
@@ -532,41 +575,45 @@ export default function TradeAnnotationForm({
         </div>
       )}
 
-      {/* Tags */}
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1.5">Tags</label>
-        <input
-          type="text"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="e.g. news-trade, overtraded, patience (comma separated)"
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      {/* Tags — hidden when off-system */}
+      {!offSystem && (
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1.5">Tags</label>
+          <input
+            type="text"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="e.g. news-trade, overtraded, patience (comma separated)"
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
 
-      {/* Chart screenshots */}
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <Camera className="h-4 w-4 text-gray-400" />
-          <label className="text-sm font-medium text-gray-300">Chart Screenshots</label>
+      {/* Chart screenshots — hidden when off-system */}
+      {!offSystem && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Camera className="h-4 w-4 text-gray-400" />
+            <label className="text-sm font-medium text-gray-300">Chart Screenshots</label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <ImageUploadSlot
+              label="Entry Chart"
+              currentUrl={entryChart}
+              uploading={uploadingEntry}
+              onFile={(file) => handleImageUpload(file, 'entry')}
+              onClear={() => handleImageRemove('entry')}
+            />
+            <ImageUploadSlot
+              label="Exit Chart"
+              currentUrl={exitChart}
+              uploading={uploadingExit}
+              onFile={(file) => handleImageUpload(file, 'exit')}
+              onClear={() => handleImageRemove('exit')}
+            />
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <ImageUploadSlot
-            label="Entry Chart"
-            currentUrl={entryChart}
-            uploading={uploadingEntry}
-            onFile={(file) => handleImageUpload(file, 'entry')}
-            onClear={() => handleImageRemove('entry')}
-          />
-          <ImageUploadSlot
-            label="Exit Chart"
-            currentUrl={exitChart}
-            uploading={uploadingExit}
-            onFile={(file) => handleImageUpload(file, 'exit')}
-            onClear={() => handleImageRemove('exit')}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-3 pt-2">
