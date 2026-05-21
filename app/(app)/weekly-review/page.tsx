@@ -113,6 +113,20 @@ export default function WeeklyReviewPage() {
     }
   }, [weekTrades])
 
+  const weekFTrades = useMemo(() => {
+    return weekTrades
+      .filter((t) => t.grade === 'F')
+      .sort((a, b) => new Date(b.entry_time).getTime() - new Date(a.entry_time).getTime())
+  }, [weekTrades])
+
+  const weekDamage = useMemo(() => {
+    if (weekFTrades.length === 0) return null
+    return {
+      count: weekFTrades.length,
+      netPnL: weekFTrades.reduce((s, t) => s + t.net_pnl, 0),
+    }
+  }, [weekFTrades])
+
   async function generateReview() {
     if (!weekTrades.length) {
       toast.error('No trades in this week')
@@ -204,6 +218,51 @@ export default function WeeklyReviewPage() {
                 Use the arrows to navigate to a week with trades.
               </p>
             </div>
+          )}
+
+          {/* Discipline — F trades this week. Silent when zero. */}
+          {weekDamage && (
+            <section className="rounded-xl border border-gray-600 bg-black/40 p-5">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-300">
+                  Discipline — off-system trades this week
+                </h2>
+                <p className="text-sm text-gray-400">
+                  {weekDamage.count} trade{weekDamage.count === 1 ? '' : 's'} ·{' '}
+                  <span className={cn('font-semibold', weekDamage.netPnL >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                    {formatCurrency(weekDamage.netPnL)}
+                  </span>
+                </p>
+              </div>
+              <ul className="space-y-2">
+                {weekFTrades.map((t) => (
+                  <li key={t.id} className="rounded-lg border border-gray-700/60 bg-gray-900/40 p-3">
+                    <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                      <p className="text-xs text-gray-400">
+                        {new Date(t.entry_time).toLocaleString('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                        <span className="text-gray-600"> · </span>
+                        <span className="text-gray-300">{t.instrument}</span>
+                      </p>
+                      <p className={cn('text-sm font-semibold', t.net_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                        {formatCurrency(t.net_pnl)}
+                      </p>
+                    </div>
+                    {t.notes && (
+                      <p className="text-sm text-gray-200 leading-snug">
+                        <span className="text-gray-500">Reason: </span>
+                        {t.notes}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
 
           {/* Generate / re-generate */}
