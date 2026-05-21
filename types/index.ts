@@ -52,6 +52,13 @@ export interface Trade {
   created_at: string
 }
 
+export interface DisciplineBreakdown {
+  setup: number
+  emotion: number
+  prep: number
+  grade: number
+}
+
 export interface DailySession {
   id: string
   user_id: string
@@ -62,6 +69,8 @@ export interface DailySession {
   emotion_score: number | null
   notes: string | null
   created_at: string
+  discipline_score: number | null
+  discipline_breakdown: DisciplineBreakdown | null
 }
 
 export interface PreMarketBrief {
