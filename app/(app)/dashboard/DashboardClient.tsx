@@ -17,6 +17,7 @@ import TradovateSyncBadge from '@/components/dashboard/TradovateSyncBadge'
 import TradingWindowIndicator from '@/components/dashboard/TradingWindowIndicator'
 import MarketNewsFeed from '@/components/dashboard/MarketNewsFeed'
 import ProactiveCoachingCard from '@/components/dashboard/ProactiveCoachingCard'
+import OffSystemDamageCard from '@/components/dashboard/OffSystemDamageCard'
 import MarketStateCard from '@/components/market/MarketStateCard'
 
 interface DashboardClientProps {
@@ -145,6 +146,9 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
 
       {/* Stats cards */}
       <StatsCards stats={stats} todayPnL={stats.todayPnL} todayGrossPnL={stats.todayGrossPnL} />
+
+      {/* Off-system damage — silent when there are no F trades this month */}
+      <OffSystemDamageCard trades={trades} />
 
       {/* Session timer */}
       <SessionTimer todayTrades={todayTrades} />
