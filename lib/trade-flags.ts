@@ -119,3 +119,12 @@ export function computeTradeFlags(trade: Trade, allTrades: Trade[]): TradeFlag[]
 
   return flags
 }
+
+// A "system" trade is one that followed (or attempted to follow) the 5-setup
+// playbook. F-graded trades are off-system (discipline lapses) and should be
+// excluded from any stat that measures the system's performance — win rate,
+// expectancy, by-setup, by-time-window. They are still included in raw P&L
+// because the money was real.
+export function isSystemTrade(trade: Trade): boolean {
+  return trade.grade !== 'F'
+}
