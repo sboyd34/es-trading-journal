@@ -28,14 +28,12 @@ F is **self-assigned only.** The AI grader never assigns F because Claude can't 
 
 **Migration** — `supabase/add_f_grade.sql`:
 - Alter `trades.grade` CHECK constraint: `IN ('A', 'B', 'C')` → `IN ('A', 'B', 'C', 'F')`
-- Alter `trades.self_grade` CHECK constraint: same expansion
-- `trades.ai_grade` CHECK constraint unchanged — stays `IN ('A', 'B', 'C')`
+- The `blind_backtest_trades` table has its own `ai_grade` / `self_grade` columns (no CHECK constraints) — **untouched.** F is for the live trade journal only; blind-backtest grading stays A/B/C.
 
 **TypeScript:**
 - `Trade['grade']`: `'A' | 'B' | 'C' | null` → `'A' | 'B' | 'C' | 'F' | null`
-- `Trade['self_grade']`: same
-- `Trade['ai_grade']`: unchanged
-- The `GRADES` const in `TradeAnnotationForm.tsx` stays `['A', 'B', 'C']` — F is not selected from that row
+- `BacktestTrade['grade']` (line 154) and `BlindBacktestTrade['ai_grade']` / `['self_grade']` (lines 260, 262) — unchanged.
+- The `GRADES` const in `TradeAnnotationForm.tsx` stays `['A', 'B', 'C']` — F is not selected from that row.
 
 **Claude prompt:** `lib/trading-system.ts` rubric block is unchanged. Claude grades A/B/C only.
 
