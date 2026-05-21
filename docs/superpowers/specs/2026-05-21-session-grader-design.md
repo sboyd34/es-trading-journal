@@ -44,7 +44,7 @@ function computeDisciplineScore(trades: Trade[], session: DailySession | null): 
 ### New file: `components/dashboard/DisciplineScoreCard.tsx`
 Dashboard card component.
 
-**Props:** `trades: Trade[]`, `session: DailySession | null`
+**Props:** `trades: Trade[]`, `session: DailySession | null`, `userId: string`, `date: string` (today's date in `YYYY-MM-DD` format — needed for the upsert)
 
 **Behavior:**
 - Returns `null` if no trades for today (silent-when-clean)
@@ -134,7 +134,7 @@ Four cells — Setup, Emotion, Prep, Grade — each showing:
 ```
 DashboardClient.tsx
   todayTrades, session (already loaded)
-    └─> <DisciplineScoreCard trades={todayTrades} session={session} />
+    └─> <DisciplineScoreCard trades={todayTrades} session={session} userId={userId} date={todayDate} />
           useMemo → computeDisciplineScore(trades, session)
             └─> { score, breakdown }
           useEffect (on score change, if trades.length > 0)
