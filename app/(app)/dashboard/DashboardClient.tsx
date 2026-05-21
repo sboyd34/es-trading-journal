@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import { Trade, RiskRules, DailySession, DashboardStats } from '@/types'
+import { isSystemTrade } from '@/lib/trade-flags'
 import StatsCards from '@/components/dashboard/StatsCards'
 import EquityCurve from '@/components/dashboard/EquityCurve'
 import WeekEquityCurve from '@/components/dashboard/WeekEquityCurve'
@@ -26,6 +27,12 @@ interface DashboardClientProps {
 }
 
 function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
+  // "System" trades drive win rate, expectancy, streak — F trades are excluded.
+  // Raw P&L still includes everything because the money was real.
+  const systemTrades = trades.filter(isSystemTrade)
+  const todayPnL = todayTrades.reduce((s, t) => s + t.net_pnl, 0)
+  const todayGrossPnL = todayTrades.reduce((s, t) => s + t.gross_pnl, 0)
+
   if (!trades.length) {
     return {
       totalPnL: 0,
@@ -36,26 +43,25 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
       avgLoss: 0,
       profitFactor: 0,
       currentStreak: 0,
-      todayPnL: todayTrades.reduce((s, t) => s + t.net_pnl, 0),
-      todayGrossPnL: todayTrades.reduce((s, t) => s + t.gross_pnl, 0),
+      todayPnL,
+      todayGrossPnL,
     }
   }
 
   const totalPnL = trades.reduce((s, t) => s + t.net_pnl, 0)
   const totalGrossPnL = trades.reduce((s, t) => s + t.gross_pnl, 0)
-  const winners = trades.filter((t) => t.net_pnl > 0)
-  const losers = trades.filter((t) => t.net_pnl <= 0)
-  const winRate = (winners.length / trades.length) * 100
+
+  const winners = systemTrades.filter((t) => t.net_pnl > 0)
+  const losers = systemTrades.filter((t) => t.net_pnl <= 0)
+  const winRate = systemTrades.length ? (winners.length / systemTrades.length) * 100 : 0
   const avgWin = winners.length ? winners.reduce((s, t) => s + t.net_pnl, 0) / winners.length : 0
   const avgLoss = losers.length ? Math.abs(losers.reduce((s, t) => s + t.net_pnl, 0) / losers.length) : 0
   const grossWins = winners.reduce((s, t) => s + t.net_pnl, 0)
   const grossLosses = Math.abs(losers.reduce((s, t) => s + t.net_pnl, 0))
   const profitFactor = grossLosses > 0 ? grossWins / grossLosses : grossWins > 0 ? Infinity : 0
-  const todayPnL = todayTrades.reduce((s, t) => s + t.net_pnl, 0)
-  const todayGrossPnL = todayTrades.reduce((s, t) => s + t.gross_pnl, 0)
 
-  // Compute current streak (consecutive wins or losses from most recent)
-  const sorted = [...trades].sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime())
+  // Streak runs over system trades only — an off-system loss shouldn't break a winning streak.
+  const sorted = [...systemTrades].sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime())
   let streak = 0
   if (sorted.length > 0) {
     const last = sorted[sorted.length - 1]
@@ -73,7 +79,7 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
     totalPnL,
     totalGrossPnL,
     winRate,
-    totalTrades: trades.length,
+    totalTrades: systemTrades.length,
     avgWin,
     avgLoss,
     profitFactor,
