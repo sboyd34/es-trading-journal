@@ -18,7 +18,7 @@ export function computeDisciplineScore(
   const setup = total === 0 ? 25 : Math.round((nonF / total) * 25)
 
   // 2. Emotional discipline (25 pts) — FOMO/revenge/anxious/overconfident = penalty
-  const emotional = trades.filter((t) => t.mood !== null && EMOTIONAL_MOODS.has(t.mood!)).length
+  const emotional = trades.filter((t) => t.mood !== null && EMOTIONAL_MOODS.has(t.mood)).length
   const emotion = total === 0 ? 25 : Math.round(((total - emotional) / total) * 25)
 
   // 3. Pre-market prep (25 pts) — checklist must be explicitly passed
