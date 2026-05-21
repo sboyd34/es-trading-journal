@@ -42,5 +42,6 @@ export function getGradeColor(grade: string | null): string {
   if (grade === 'A') return 'text-emerald-400 bg-emerald-400/10'
   if (grade === 'B') return 'text-yellow-400 bg-yellow-400/10'
   if (grade === 'C') return 'text-red-400 bg-red-400/10'
+  if (grade === 'F') return 'text-white bg-black border border-gray-600'
   return 'text-gray-400 bg-gray-400/10'
 }
