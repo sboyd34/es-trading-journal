@@ -24,7 +24,8 @@ import {
   LineChart,
   Line,
 } from 'recharts'
-import { Shuffle, Sparkles, Loader2 } from 'lucide-react'
+import { Sparkles, Loader2 } from 'lucide-react'
+import MonteCarloTab from '@/components/reports/MonteCarloTab'
 import toast from 'react-hot-toast'
 
 type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'montecarlo' | 'setups' | 'dayofweek' | 'emotiongrade'
@@ -231,9 +232,7 @@ export default function ReportsPage() {
   const [trades, setTrades] = useState<Trade[]>([])
   const [riskRules, setRiskRules] = useState<RiskRules | null>(null)
   const [loading, setLoading] = useState(true)
-  const [mcNumTrades, setMcNumTrades] = useState(50)
-  const [mcRunCount, setMcRunCount] = useState(0)
-  const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
+const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
 
   // What-If state
   const [dateRange, setDateRange] = useState<DateRange>('all-time')
@@ -469,56 +468,6 @@ export default function ReportsPage() {
     }
   }
 
-  // Monte Carlo simulation
-  const monteCarloResult = useMemo(() => {
-    if (trades.length < 5 || mcRunCount === 0) return null
-    const NUM_SIMS = 1000
-    const N = Math.min(Math.max(mcNumTrades, 10), 200)
-
-    const stepValues: number[][] = Array.from({ length: N + 1 }, () => [])
-    for (let sim = 0; sim < NUM_SIMS; sim++) {
-      let cum = 0
-      stepValues[0].push(0)
-      for (let t = 0; t < N; t++) {
-        cum += trades[Math.floor(Math.random() * trades.length)].net_pnl
-        stepValues[t + 1].push(cum)
-      }
-    }
-
-    const pct = (arr: number[], p: number) => arr[Math.floor(arr.length * p)] ?? 0
-    const stride = Math.max(1, Math.floor(N / 50))
-    const steps: number[] = []
-    for (let i = 0; i <= N; i += stride) steps.push(i)
-    if (steps[steps.length - 1] !== N) steps.push(N)
-
-    const fanData = steps.map((step) => {
-      const sorted = [...stepValues[step]].sort((a, b) => a - b)
-      return { trade: step, p5: pct(sorted, 0.05), p25: pct(sorted, 0.25), p50: pct(sorted, 0.5), p75: pct(sorted, 0.75), p95: pct(sorted, 0.95) }
-    })
-
-    const finals = stepValues[N]
-    const sortedFinals = [...finals].sort((a, b) => a - b)
-    const fMin = sortedFinals[0]
-    const fMax = sortedFinals[sortedFinals.length - 1]
-    const BIN_COUNT = 25
-    const binWidth = (fMax - fMin) / BIN_COUNT || 1
-    const histogram = Array.from({ length: BIN_COUNT }, (_, i) => {
-      const lo = fMin + i * binWidth
-      const hi = lo + binWidth
-      const count = finals.filter((v) => (i === BIN_COUNT - 1 ? v >= lo && v <= hi : v >= lo && v < hi)).length
-      return { bin: `$${Math.round(lo + binWidth / 2)}`, count, positive: lo + binWidth / 2 >= 0 }
-    })
-
-    return {
-      fanData,
-      histogram,
-      probProfit: (finals.filter((v) => v > 0).length / finals.length) * 100,
-      median: pct(sortedFinals, 0.5),
-      p5: pct(sortedFinals, 0.05),
-      p95: pct(sortedFinals, 0.95),
-      expectedValue: finals.reduce((s, v) => s + v, 0) / finals.length,
-    }
-  }, [trades, mcNumTrades, mcRunCount])
 
   // ── Setup Performance Matrix ──────────────────────────────────────────────
   const setupMatrixData = useMemo(() => {
@@ -1164,147 +1113,7 @@ export default function ReportsPage() {
 
       {/* Monte Carlo Simulator */}
       {tab === 'montecarlo' && (
-        <div className="space-y-6">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="text-base font-semibold text-white">Monte Carlo Simulator</h2>
-              <p className="text-sm text-gray-400 mt-0.5">
-                1,000 random trade sequences sampled from your history to forecast P&L distribution.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-400 whitespace-nowrap">Trades per path:</label>
-                <input
-                  type="number"
-                  min={10}
-                  max={200}
-                  step={10}
-                  value={mcNumTrades}
-                  onChange={(e) => setMcNumTrades(parseInt(e.target.value) || 50)}
-                  className="w-20 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
-                />
-              </div>
-              <button
-                onClick={() => {
-                  if (trades.length < 5) {
-                    toast.error('Need at least 5 trades to run simulation')
-                    return
-                  }
-                  setMcRunCount((c) => c + 1)
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded-xl transition"
-              >
-                <Shuffle className="h-4 w-4" />
-                {mcRunCount === 0 ? 'Run Simulation' : 'Re-Run'}
-              </button>
-            </div>
-          </div>
-
-          {mcRunCount === 0 ? (
-            <div className="bg-gray-800/30 border border-gray-700/50 border-dashed rounded-xl p-12 text-center">
-              <Shuffle className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-400 font-medium">No simulation run yet</p>
-              <p className="text-gray-600 text-sm mt-1">
-                Click &ldquo;Run Simulation&rdquo; to generate 1,000 random trade sequences based on your history.
-              </p>
-              <p className="text-gray-700 text-xs mt-2">Requires at least 5 trades.</p>
-            </div>
-          ) : monteCarloResult ? (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  {
-                    label: 'Prob. of Profit',
-                    value: `${monteCarloResult.probProfit.toFixed(1)}%`,
-                    color: monteCarloResult.probProfit >= 50 ? 'text-emerald-400' : 'text-red-400',
-                  },
-                  {
-                    label: 'Median Outcome',
-                    value: formatCurrency(monteCarloResult.median),
-                    color: monteCarloResult.median >= 0 ? 'text-emerald-400' : 'text-red-400',
-                  },
-                  {
-                    label: '5th Pct (Worst 5%)',
-                    value: formatCurrency(monteCarloResult.p5),
-                    color: 'text-red-400',
-                  },
-                  {
-                    label: '95th Pct (Best 5%)',
-                    value: formatCurrency(monteCarloResult.p95),
-                    color: 'text-emerald-400',
-                  },
-                ].map((stat) => (
-                  <div key={stat.label} className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4">
-                    <p className="text-xs text-gray-400 font-medium">{stat.label}</p>
-                    <p className={cn('text-xl font-bold mt-1', stat.color)}>{stat.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
-                <p className="text-sm font-semibold text-gray-300 mb-4">
-                  Equity Path Percentiles — {mcNumTrades} trades
-                </p>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={monteCarloResult.fanData} margin={{ top: 5, right: 10, left: 10, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      dataKey="trade"
-                      tick={{ fontSize: 11, fill: '#9ca3af' }}
-                      label={{ value: 'Trade #', position: 'insideBottom', offset: -10, fill: '#6b7280', fontSize: 11 }}
-                    />
-                    <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <ReferenceLine y={0} stroke="#6b7280" strokeDasharray="4 2" />
-                    <Tooltip
-                      {...tooltipStyle}
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      formatter={(v: any, name: any) => [formatCurrency(Number(v)), name]}
-                    />
-                    <Line dataKey="p95" name="95th %" stroke="#10b981" strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
-                    <Line dataKey="p75" name="75th %" stroke="#60a5fa" strokeWidth={1} strokeDasharray="3 2" dot={false} />
-                    <Line dataKey="p50" name="Median" stroke="#3b82f6" strokeWidth={2.5} dot={false} />
-                    <Line dataKey="p25" name="25th %" stroke="#60a5fa" strokeWidth={1} strokeDasharray="3 2" dot={false} />
-                    <Line dataKey="p5" name="5th %" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
-                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
-                <p className="text-sm font-semibold text-gray-300 mb-4">
-                  Final P&L Distribution after {mcNumTrades} trades
-                </p>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={monteCarloResult.histogram} margin={{ top: 5, right: 10, left: 10, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      dataKey="bin"
-                      tick={{ fontSize: 9, fill: '#9ca3af' }}
-                      interval={4}
-                      angle={-30}
-                      textAnchor="end"
-                    />
-                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <Tooltip
-                      {...tooltipStyle}
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      formatter={(v: any) => [v, 'Simulations']}
-                    />
-                    <Bar dataKey="count" name="Simulations">
-                      {monteCarloResult.histogram.map((entry, index) => (
-                        <Cell key={index} fill={entry.positive ? '#10b981' : '#ef4444'} opacity={0.75} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <p className="text-xs text-gray-600 mt-3 text-center">
-                  Based on 1,000 simulations sampling randomly (with replacement) from your {trades.length} historical trades.
-                </p>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <MonteCarloTab trades={dateFilteredTrades} riskRules={riskRules} />
       )}
 
       {/* ── Setup Performance Matrix ──────────────────────────────────────── */}
