@@ -45,7 +45,7 @@ export default function JournalPage() {
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterDirection, setFilterDirection] = useState<'all' | 'long' | 'short'>('all')
-  const [filterGrade, setFilterGrade] = useState<'all' | 'A' | 'B' | 'C'>('all')
+  const [filterGrade, setFilterGrade] = useState<'all' | 'A' | 'B' | 'C' | 'F'>('all')
   const [filterMood, setFilterMood] = useState<string>('all')
   const [filterInstrument, setFilterInstrument] = useState<string>('all')
 
@@ -306,6 +306,7 @@ export default function JournalPage() {
               <option value="A">Grade A</option>
               <option value="B">Grade B</option>
               <option value="C">Grade C</option>
+              <option value="F">Grade F (off-system)</option>
             </select>
             <select
               value={filterMood}
