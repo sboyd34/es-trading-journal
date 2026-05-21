@@ -54,15 +54,18 @@ export default function DisciplineScoreCard({ trades, session, userId, date }: P
   useEffect(() => {
     if (trades.length === 0) return
     const supabase = createClient()
-    supabase.from('daily_sessions').upsert(
-      {
-        user_id: userId,
-        date,
-        discipline_score: score,
-        discipline_breakdown: breakdown,
-      },
-      { onConflict: 'user_id,date' },
-    )
+    ;(async () => {
+      const { error } = await supabase.from('daily_sessions').upsert(
+        {
+          user_id: userId,
+          date,
+          discipline_score: score,
+          discipline_breakdown: breakdown,
+        },
+        { onConflict: 'user_id,date' },
+      )
+      if (error) console.error('[DisciplineScoreCard] upsert failed', error)
+    })()
   }, [score, breakdown, userId, date, trades.length])
 
   if (trades.length === 0) return null
