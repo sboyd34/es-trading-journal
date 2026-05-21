@@ -21,8 +21,6 @@ import {
   Area,
   ReferenceLine,
   Legend,
-  LineChart,
-  Line,
 } from 'recharts'
 import { Sparkles, Loader2 } from 'lucide-react'
 import MonteCarloTab from '@/components/reports/MonteCarloTab'
