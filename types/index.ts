@@ -28,7 +28,7 @@ export interface Trade {
   commission: number
   net_pnl: number
   mood: 'calm' | 'confident' | 'anxious' | 'FOMO' | 'revenge' | 'hesitant' | 'bored' | 'overconfident' | null
-  grade: 'A' | 'B' | 'C' | null
+  grade: 'A' | 'B' | 'C' | 'F' | null
   setup_tag: string | null
   mae: number | null
   mfe: number | null
