@@ -330,7 +330,9 @@ export default function FiveWordGateModal({ trade, trades = [], onComplete, onCa
             className="mt-0.5 h-4 w-4 accent-blue-500 cursor-pointer"
           />
           <span className="text-sm text-gray-300 group-hover:text-white transition leading-snug">
-            I can state all five clearly and this trade matches my system.
+            {inPlan === false
+              ? 'I acknowledge this was an off-plan trade and I am logging it for review.'
+              : 'I can state all five clearly and this trade matches my system.'}
           </span>
         </label>
       )}
