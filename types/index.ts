@@ -213,6 +213,10 @@ export interface WeeklyReviewContent {
     key_insight: string
   }>
   emotional_trends: string
+  discipline_trend?: {
+    days: Array<{ date: string; score: number | null }>
+    narrative: string
+  }
   top_lessons: string[]
   next_week_focus: string[]
 }
