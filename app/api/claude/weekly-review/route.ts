@@ -3,6 +3,7 @@ export const maxDuration = 60
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { Trade, DailySession } from '@/types'
@@ -57,8 +58,7 @@ export async function POST(request: NextRequest) {
     // Auth: cron path uses CRON_SECRET header + userId in body.
     // Browser path uses cookie session.
     let userId: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let supabase: any
+    let supabase: SupabaseClient
 
     const cronSecret = process.env.CRON_SECRET
     const authHeader = request.headers.get('authorization')
