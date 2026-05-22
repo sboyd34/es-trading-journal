@@ -17,13 +17,14 @@ import type { TradeChartResponse } from '@/app/api/trades/[id]/chart/route'
 import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
 import TradeNarrativePanel from '@/components/journal/TradeNarrativePanel'
 import SessionTimeline from '@/components/journal/SessionTimeline'
+import EodScorecard from '@/components/journal/EodScorecard'
 
 const CandlestickChart = dynamic(
   () => import('@/components/blind-backtest/CandlestickChart'),
   { ssr: false },
 )
 
-type Tab = 'log' | 'import' | 'timeline'
+type Tab = 'log' | 'import' | 'timeline' | 'eod'
 
 export default function JournalPage() {
   const [tab, setTab] = useState<Tab>('log')
@@ -268,6 +269,15 @@ export default function JournalPage() {
           )}
         >
           Timeline
+        </button>
+        <button
+          onClick={() => setTab('eod')}
+          className={cn(
+            'px-5 py-2 rounded-lg text-sm font-medium transition',
+            tab === 'eod' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+          )}
+        >
+          EOD
         </button>
       </div>
 
@@ -663,6 +673,18 @@ export default function JournalPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* EOD Scorecard Tab */}
+      {tab === 'eod' && (
+        <EodScorecard
+          trades={trades}
+          defaultDate={
+            trades.length > 0
+              ? [...trades].sort((a, b) => b.date.localeCompare(a.date))[0].date
+              : undefined
+          }
+        />
       )}
 
       {/* Timeline Tab */}
