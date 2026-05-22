@@ -9,23 +9,6 @@ export interface TradeFlag {
   detail: string
 }
 
-// Returns the CT minute-of-day for an entry_time ISO string, or null on failure.
-function ctMins(entryTime: string): number | null {
-  try {
-    const d = new Date(entryTime)
-    const s = d.toLocaleTimeString('en-US', {
-      timeZone: 'America/Chicago',
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-    const [h, m] = s.split(':').map(Number)
-    return h * 60 + m
-  } catch {
-    return null
-  }
-}
-
 // Returns the CT HH:MM string for display.
 export function ctTimeLabel(entryTime: string): string | null {
   try {

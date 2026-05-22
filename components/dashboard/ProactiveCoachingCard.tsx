@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { Trade, RiskRules } from '@/types'
 import { cn, formatCurrency } from '@/lib/utils'
-import { parseISO, subDays, format } from 'date-fns'
+import { parseISO, subDays } from 'date-fns'
 import { ShieldAlert, AlertTriangle, TrendingDown, Brain, CheckCircle2, Zap } from 'lucide-react'
 
 interface CoachingSignal {
