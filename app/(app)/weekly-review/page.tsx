@@ -16,6 +16,7 @@ import {
   Target,
   Heart,
   BarChart3,
+  TrendingUp,
 } from 'lucide-react'
 
 function dateOnly(s: string): Date {
@@ -275,7 +276,7 @@ export default function WeeklyReviewPage() {
                 <p className="text-xs text-gray-400 mt-0.5">
                   {review
                     ? `Generated ${new Date(review.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}`
-                    : 'Claude will analyze every trade against your rules framework.'}
+                    : 'Generates automatically Friday after close'}
                 </p>
               </div>
               <button
@@ -302,6 +303,11 @@ export default function WeeklyReviewPage() {
 
               {/* Compliance score */}
               <ComplianceCard compliance={review.review.system_compliance} />
+
+              {/* Discipline trend */}
+              {review.review.discipline_trend && (
+                <DisciplineTrendSection trend={review.review.discipline_trend} />
+              )}
 
               {/* Setup breakdown */}
               {review.review.setup_breakdown?.length > 0 && (
@@ -447,6 +453,69 @@ function ComplianceCard({ compliance }: { compliance: { score: number; wins: str
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function DisciplineTrendSection({
+  trend,
+}: {
+  trend: { days: Array<{ date: string; score: number | null }>; narrative: string }
+}) {
+  const nonNull = trend.days.filter((d) => d.score !== null)
+  const avg =
+    nonNull.length > 0
+      ? (nonNull.reduce((s, d) => s + (d.score ?? 0), 0) / nonNull.length).toFixed(1)
+      : null
+
+  function dayLabel(dateStr: string): string {
+    const parts = dateStr.split('-').map(Number)
+    const d = new Date(Date.UTC(parts[0] ?? 0, (parts[1] ?? 1) - 1, parts[2] ?? 1))
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()]
+  }
+
+  function chipStyle(score: number | null): string {
+    if (score === null) return 'border-gray-700 bg-gray-800/40 text-gray-600'
+    if (score >= 90) return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+    if (score >= 70) return 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+    return 'border-red-500/40 bg-red-500/10 text-red-400'
+  }
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-purple-400" />
+          Discipline Trend
+        </h2>
+        {avg && (
+          <span className="text-xs text-gray-400">
+            Weekly avg:{' '}
+            <span className={cn(
+              'font-semibold',
+              parseFloat(avg) >= 90 ? 'text-emerald-400' : parseFloat(avg) >= 70 ? 'text-amber-400' : 'text-red-400',
+            )}>
+              {avg}
+            </span>
+          </span>
+        )}
+      </div>
+
+      {/* Day chips */}
+      <div className="flex gap-2 flex-wrap mb-4">
+        {trend.days.map((d) => (
+          <div
+            key={d.date}
+            className={cn('flex flex-col items-center px-3 py-2 rounded-lg border text-center min-w-[54px]', chipStyle(d.score))}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-wider opacity-70">{dayLabel(d.date)}</span>
+            <span className="text-sm font-bold mt-0.5">{d.score !== null ? d.score : '—'}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Claude's narrative */}
+      <p className="text-sm text-gray-300 leading-relaxed">{trend.narrative}</p>
     </div>
   )
 }
