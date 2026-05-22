@@ -4,6 +4,7 @@ export const SYSTEM_SETUPS = [
   'AVWAP Bounce',
   'FVG Bounce',
   'Divergence/Trendline Break',
+  'No Setup',
 ] as const
 
 export const SYSTEM_LOCATIONS = [
