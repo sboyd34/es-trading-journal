@@ -16,13 +16,14 @@ import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertT
 import type { TradeChartResponse } from '@/app/api/trades/[id]/chart/route'
 import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
 import TradeNarrativePanel from '@/components/journal/TradeNarrativePanel'
+import SessionTimeline from '@/components/journal/SessionTimeline'
 
 const CandlestickChart = dynamic(
   () => import('@/components/blind-backtest/CandlestickChart'),
   { ssr: false },
 )
 
-type Tab = 'log' | 'import'
+type Tab = 'log' | 'import' | 'timeline'
 
 export default function JournalPage() {
   const [tab, setTab] = useState<Tab>('log')
@@ -258,6 +259,15 @@ export default function JournalPage() {
           )}
         >
           Import CSV
+        </button>
+        <button
+          onClick={() => setTab('timeline')}
+          className={cn(
+            'px-5 py-2 rounded-lg text-sm font-medium transition',
+            tab === 'timeline' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+          )}
+        >
+          Timeline
         </button>
       </div>
 
@@ -653,6 +663,19 @@ export default function JournalPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Timeline Tab */}
+      {tab === 'timeline' && (
+        <SessionTimeline
+          trades={trades}
+          onAnnotate={(trade) => setChecklistTrade(trade)}
+          defaultDate={
+            trades.length > 0
+              ? [...trades].sort((a, b) => b.date.localeCompare(a.date))[0].date
+              : undefined
+          }
+        />
       )}
 
       {/* Five-Word Gate modal */}
