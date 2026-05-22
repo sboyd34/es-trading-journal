@@ -4,13 +4,13 @@ export const maxDuration = 60
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { Trade, DailySession } from '@/types'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
-// YYYY-MM-DD → epoch day count (timezone-agnostic, used for date math).
 function dateOnly(s: string): Date {
   const [y, m, d] = s.split('-').map(Number)
   return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1))
@@ -46,13 +46,32 @@ function ctTime(iso: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Parse body first — needed for both auth paths.
+    const body = await request.json()
+    const { weekStartDate, userId: cronUserId } = body
 
-    const { weekStartDate } = await request.json()
     if (!weekStartDate || typeof weekStartDate !== 'string') {
       return NextResponse.json({ error: 'weekStartDate is required (YYYY-MM-DD, Monday)' }, { status: 400 })
+    }
+
+    // Auth: cron path uses CRON_SECRET header + userId in body.
+    // Browser path uses cookie session.
+    let userId: string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let supabase: any
+
+    const cronSecret = process.env.CRON_SECRET
+    const authHeader = request.headers.get('authorization')
+
+    if (cronSecret && authHeader === `Bearer ${cronSecret}` && typeof cronUserId === 'string') {
+      userId = cronUserId
+      supabase = createServiceClient()
+    } else {
+      const cookieClient = await createClient()
+      const { data: { user } } = await cookieClient.auth.getUser()
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      userId = user.id
+      supabase = cookieClient
     }
 
     const startDate = dateOnly(weekStartDate)
@@ -63,14 +82,14 @@ export async function POST(request: NextRequest) {
       supabase
         .from('trades')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .gte('date', weekStartDate)
         .lte('date', weekEndDate)
         .order('entry_time', { ascending: true }),
       supabase
         .from('daily_sessions')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .gte('date', weekStartDate)
         .lte('date', weekEndDate),
     ])
@@ -87,7 +106,6 @@ export async function POST(request: NextRequest) {
     const losers = trades.filter((t) => t.net_pnl <= 0)
     const winRate = (winners.length / trades.length) * 100
 
-    // Group by day for context
     const byDate: Record<string, Trade[]> = {}
     for (const t of trades) {
       byDate[t.date] = byDate[t.date] || []
@@ -118,6 +136,29 @@ export async function POST(request: NextRequest) {
         return parts.join('\n')
       })
       .join('\n\n')
+
+    // Build discipline score section for the prompt.
+    const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+    const disciplineLines = DAY_LABELS.map((label, i) => {
+      const dayDate = isoDate(addDays(startDate, i))
+      const session = sessions.find((s) => s.date === dayDate)
+      const score = session?.discipline_score ?? null
+      const bd = session?.discipline_breakdown
+      if (score === null) return `${label} ${dayDate.slice(5).replace('-', '/')}: null`
+      const bdStr = bd
+        ? `  (setup ${bd.setup}, emotion ${bd.emotion}, prep ${bd.prep}, grade ${bd.grade})`
+        : ''
+      return `${label} ${dayDate.slice(5).replace('-', '/')}: ${score}${bdStr}`
+    })
+    const scoredSessions = sessions.filter((s) => s.discipline_score !== null)
+    const weekAvgScore = scoredSessions.length > 0
+      ? (scoredSessions.reduce((sum, s) => sum + (s.discipline_score ?? 0), 0) / scoredSessions.length).toFixed(1)
+      : null
+    const disciplineSection = [
+      'Discipline scores this week (0-100, null = no trades or score not recorded):',
+      ...disciplineLines,
+      weekAvgScore ? `Weekly avg: ${weekAvgScore}` : 'Weekly avg: N/A (no scores recorded)',
+    ].join('\n')
 
     const systemPrompt = `You are an expert ES futures trading coach reviewing a trader's week. This trader uses a strict rules-based system. Be specific — name exact rules, give percentages and dollar amounts. Avoid generic platitudes.
 
@@ -156,6 +197,12 @@ Return ONLY valid JSON with this exact structure:
     }
   ],
   "emotional_trends": "Mood patterns across the week, revenge/FOMO clusters, how state evolved",
+  "discipline_trend": {
+    "days": [
+      {"date": "YYYY-MM-DD", "score": <number or null>}
+    ],
+    "narrative": "2-3 sentences on what the trend shows, what drove any dips, whether discipline is improving or slipping"
+  },
   "top_lessons": ["The 2-3 most important specific lessons from this week"],
   "next_week_focus": ["1-3 concrete rule-based behaviors to enforce next week"]
 }`
@@ -166,12 +213,14 @@ Total trades: ${trades.length} (${winners.length}W / ${losers.length}L), Win rat
 Trades by day:
 ${dailySummary}
 
+${disciplineSection}
+
 ${sessionContext ? `Daily journal context:\n${sessionContext}\n` : ''}
 Generate the weekly review.`
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2500,
+      max_tokens: 2800,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     })
@@ -195,11 +244,10 @@ Generate the weekly review.`
       return NextResponse.json({ error: 'Invalid JSON in AI response' }, { status: 500 })
     }
 
-    // Upsert
     const { data: existing } = await supabase
       .from('weekly_reviews')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('week_start_date', weekStartDate)
       .maybeSingle()
 
@@ -215,7 +263,7 @@ Generate the weekly review.`
         .eq('id', existing.id)
     } else {
       await supabase.from('weekly_reviews').insert({
-        user_id: user.id,
+        user_id: userId,
         week_start_date: weekStartDate,
         week_end_date: weekEndDate,
         review,
