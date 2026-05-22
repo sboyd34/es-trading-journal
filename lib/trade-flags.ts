@@ -1,6 +1,6 @@
 import { Trade } from '@/types'
 
-export type FlagType = 'time_window' | 'apex_trade_count'
+export type FlagType = 'apex_trade_count'
 export type FlagSeverity = 'critical' | 'warning'
 
 export interface TradeFlag {
@@ -75,39 +75,7 @@ export function tradeIndexForDay(trade: Trade, allTrades: Trade[]): number {
 export function computeTradeFlags(trade: Trade, allTrades: Trade[]): TradeFlag[] {
   const flags: TradeFlag[] = []
 
-  // 1. Time window check
-  const mins = ctMins(trade.entry_time)
-  if (mins !== null) {
-    const window = classifyWindow(mins)
-    const ctLabel = ctTimeLabel(trade.entry_time) ?? '??:??'
-    if (window === 'building') {
-      flags.push({
-        type: 'time_window',
-        severity: 'warning',
-        detail: `${ctLabel} CT — opening range building, no trades until 08:45`,
-      })
-    } else if (window === 'dead_zone') {
-      flags.push({
-        type: 'time_window',
-        severity: 'critical',
-        detail: `${ctLabel} CT — dead zone (11:00–12:30 CT). No trades allowed.`,
-      })
-    } else if (window === 'closed') {
-      flags.push({
-        type: 'time_window',
-        severity: 'critical',
-        detail: `${ctLabel} CT — session closed after 14:00 CT. No trades after close.`,
-      })
-    } else if (window === 'unknown') {
-      flags.push({
-        type: 'time_window',
-        severity: 'warning',
-        detail: `${ctLabel} CT — outside all approved trading windows`,
-      })
-    }
-  }
-
-  // 2. Apex 2-trade-per-day limit
+  // Apex 2-trade-per-day limit
   const idx = tradeIndexForDay(trade, allTrades)
   if (idx > 2) {
     flags.push({
