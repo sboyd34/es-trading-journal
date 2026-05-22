@@ -14,16 +14,17 @@ function thisWeekMonday(): string {
 
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
+
+  if (!cronSecret && process.env.NODE_ENV === 'production') {
+    console.error('[cron/weekly-review] CRON_SECRET not set in production')
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+  }
+
   if (cronSecret) {
     const auth = request.headers.get('authorization')
     if (auth !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-  }
-
-  if (!cronSecret && process.env.NODE_ENV === 'production') {
-    console.error('[cron/weekly-review] CRON_SECRET not set in production')
-    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
   }
 
   const supabase = createServiceClient()
