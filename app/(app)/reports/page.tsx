@@ -26,7 +26,7 @@ import { Sparkles, Loader2 } from 'lucide-react'
 import MonteCarloTab from '@/components/reports/MonteCarloTab'
 import toast from 'react-hot-toast'
 
-type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'montecarlo' | 'setups' | 'dayofweek' | 'emotiongrade'
+type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'montecarlo' | 'setups' | 'dayofweek' | 'emotiongrade' | 'location'
 type MatrixDim = 'time' | 'day' | 'bias'
 type DateRange = 'this-week' | 'this-month' | 'last-30' | 'all-time'
 type ScenarioId =
@@ -51,6 +51,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'setups', label: 'Setup Matrix' },
   { id: 'dayofweek', label: 'Day of Week' },
   { id: 'emotiongrade', label: 'Emotion × Grade' },
+  { id: 'location', label: 'Location' },
 ]
 
 const DATE_RANGES: { id: DateRange; label: string }[] = [
@@ -130,6 +131,20 @@ function timeWindowLabel(mins: number): string {
   if (mins > 570 && mins <= 630) return 'Contd.'
   if (mins > 630 && mins <= 660) return 'Late'
   if (mins >= 750 && mins <= 840) return 'Secondary'
+  return 'Other'
+}
+
+function matchLocationName(trade: Trade): string {
+  const raw = (trade.trade_location ?? '').toLowerCase().trim()
+  if (!raw) return 'None/Untagged'
+  if (raw.includes('orh') || raw.includes('orl') || raw.includes('opening range')) return 'ORH/ORL'
+  if (raw.includes('avwap')) return 'VWAP/AVWAP'
+  if (raw.includes('vwap')) return 'VWAP/AVWAP'
+  if (raw.includes('vah') || raw.includes('val') || raw.includes('value area')) return 'VAH/VAL'
+  if (raw.includes('pdh') || raw.includes('pdl') || raw.includes('prior day')) return 'PDH/PDL'
+  if (raw.includes('overnight') || raw.includes('on high') || raw.includes('on low')) return 'Overnight Hi/Lo'
+  if (raw.includes('prior swing') || raw.includes('swing high') || raw.includes('swing low') || raw.includes('swing extreme')) return 'Prior Swing'
+  if (raw.includes('supply') || raw.includes('demand') || raw.includes('fsd') || raw.includes('fresh')) return 'Supply/Demand'
   return 'Other'
 }
 
@@ -561,6 +576,35 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
       if (hasMood) { const c = byMood[t.mood!]; if (c) addTo(c) }
     }
     return { matrix, MOODS, GRADES, byGrade, byMood, untagged }
+  }, [trades])
+
+  // ── Location Performance ──────────────────────────────────────────────────
+  const locationData = useMemo(() => {
+    const LOC_KEYS = ['ORH/ORL', 'VWAP/AVWAP', 'VAH/VAL', 'PDH/PDL', 'Overnight Hi/Lo', 'Prior Swing', 'Supply/Demand', 'Other', 'None/Untagged'] as const
+    const SETUP_KEYS = ['ORB Break', 'TTM Squeeze', 'AVWAP Bounce', 'FVG Bounce', 'Divergence/TB'] as const
+
+    type Cell = { n: number; wins: number; pnl: number; grossW: number; grossL: number }
+    const mk = (): Cell => ({ n: 0, wins: 0, pnl: 0, grossW: 0, grossL: 0 })
+    const addTo = (cell: Cell, t: Trade) => {
+      cell.n++
+      if (t.net_pnl > 0) { cell.wins++; cell.grossW += t.net_pnl } else { cell.grossL += Math.abs(t.net_pnl) }
+      cell.pnl += t.net_pnl
+    }
+
+    const overall = Object.fromEntries(LOC_KEYS.map(l => [l, mk()])) as Record<string, Cell>
+    const matrix = Object.fromEntries(
+      SETUP_KEYS.map(s => [s, Object.fromEntries(LOC_KEYS.map(l => [l, mk()]))])
+    ) as Record<string, Record<string, Cell>>
+
+    for (const t of trades) {
+      const loc = matchLocationName(t)
+      addTo(overall[loc], t)
+      const setup = matchSetupName(t)
+      if (setup) addTo(matrix[setup][loc], t)
+    }
+
+    const totalTagged = trades.filter(t => t.trade_location).length
+    return { LOC_KEYS, SETUP_KEYS, overall, matrix, totalTagged }
   }, [trades])
 
   if (loading) {
@@ -1631,6 +1675,167 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
                   </div>
                   <span className="text-gray-700">n&lt;3 = dimmed — don&apos;t conclude</span>
                   <span className="ml-auto text-gray-700">Avg P&L is net (after commissions)</span>
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Location Performance tab */}
+      {tab === 'location' && (() => {
+        const { LOC_KEYS, SETUP_KEYS, overall, matrix, totalTagged } = locationData
+
+        const cellColor = (n: number, wins: number) => {
+          if (n === 0) return 'text-gray-700'
+          if (n < 3) return 'text-gray-500'
+          const wr = wins / n
+          if (wr >= 0.60) return 'text-emerald-400'
+          if (wr >= 0.45) return 'text-yellow-400'
+          return 'text-red-400'
+        }
+        const cellBg = (n: number, wins: number) => {
+          if (n < 3) return ''
+          const wr = wins / n
+          if (wr >= 0.60) return 'bg-emerald-500/10'
+          if (wr >= 0.45) return 'bg-yellow-500/10'
+          return 'bg-red-500/10'
+        }
+
+        const summaryRows = LOC_KEYS
+          .map(loc => {
+            const c = overall[loc]
+            return {
+              loc,
+              n: c.n,
+              winRate: c.n > 0 ? (c.wins / c.n) * 100 : 0,
+              avgPnL: c.n > 0 ? c.pnl / c.n : 0,
+              pf: c.grossL > 0 ? c.grossW / c.grossL : c.grossW > 0 ? Infinity : 0,
+              totalPnL: c.pnl,
+            }
+          })
+          .filter(r => r.n > 0)
+          .sort((a, b) => b.totalPnL - a.totalPnL)
+
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-base font-semibold text-white">Location Performance</h2>
+              <p className="text-sm text-gray-400 mt-0.5">
+                {totalTagged} of {trades.length} trades have a location tagged. Cells with n&lt;3 are dimmed.
+              </p>
+            </div>
+
+            {totalTagged === 0 ? (
+              <EmptyState message="No location-tagged trades yet — annotate trades with a trade_location to populate this view" />
+            ) : (
+              <>
+                {/* Overall summary table */}
+                <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-700/50">
+                    <p className="text-sm font-semibold text-gray-200">Overall by Location — ranked by Net P&L</p>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-700/40">
+                        <th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-400">Location</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-gray-400">Trades</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-gray-400">Win Rate</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-gray-400">Avg P&L</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-gray-400">Profit Factor</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-gray-400">Net P&L</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summaryRows.map((r, i) => (
+                        <tr key={r.loc} className="border-b border-gray-700/20 hover:bg-gray-700/10 transition">
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-600 w-4 tabular-nums">{i + 1}</span>
+                              <span className="font-medium text-gray-200">{r.loc}</span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-right text-gray-400 tabular-nums">{r.n}</td>
+                          <td className="px-5 py-3 text-right">
+                            <span className={cn('font-semibold', r.winRate >= 55 ? 'text-emerald-400' : r.winRate >= 45 ? 'text-yellow-400' : 'text-red-400')}>
+                              {r.winRate.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className={cn('px-5 py-3 text-right font-semibold tabular-nums', r.avgPnL >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                            {formatCurrency(r.avgPnL)}
+                          </td>
+                          <td className="px-5 py-3 text-right text-gray-300 tabular-nums">
+                            {isFinite(r.pf) ? r.pf.toFixed(2) : '∞'}
+                          </td>
+                          <td className={cn('px-5 py-3 text-right font-semibold tabular-nums', r.totalPnL >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                            {formatCurrency(r.totalPnL)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Setup × Location win rate matrix */}
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-200">Win Rate Matrix — Setup × Location</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Which setups work at which locations?</p>
+                  </div>
+                  <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-700/50">
+                          <th className="text-left px-4 py-3 text-gray-400 font-semibold whitespace-nowrap min-w-[148px]">Setup</th>
+                          {LOC_KEYS.filter(l => overall[l].n > 0).map(loc => (
+                            <th key={loc} className="px-3 py-3 text-center text-gray-400 font-semibold whitespace-nowrap">
+                              {loc}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SETUP_KEYS.map(setup => (
+                          <tr key={setup} className="border-b border-gray-700/20 hover:bg-gray-700/10 transition">
+                            <td className="px-4 py-3 font-medium text-gray-300 whitespace-nowrap">{setup}</td>
+                            {LOC_KEYS.filter(l => overall[l].n > 0).map(loc => {
+                              const cell = matrix[setup][loc]
+                              return (
+                                <td key={loc} className="px-2 py-2 text-center">
+                                  {cell.n === 0 ? (
+                                    <span className="text-gray-700">—</span>
+                                  ) : (
+                                    <div className={cn('rounded px-2 py-1 inline-block min-w-[52px]', cellBg(cell.n, cell.wins))}>
+                                      <div className={cn('font-bold', cellColor(cell.n, cell.wins))}>
+                                        {(cell.wins / cell.n * 100).toFixed(0)}%
+                                      </div>
+                                      <div className="text-gray-600 text-[10px]">n={cell.n}</div>
+                                    </div>
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex items-center gap-5 text-[11px] text-gray-500 px-1 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded bg-emerald-500/20 border border-emerald-500/30 flex-shrink-0" />
+                      <span>≥60% win rate</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded bg-yellow-500/10 border border-yellow-500/20 flex-shrink-0" />
+                      <span>45–59%</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded bg-red-500/10 border border-red-500/20 flex-shrink-0" />
+                      <span>&lt;45%</span>
+                    </div>
+                    <span className="text-gray-700">Dimmed = n&lt;3 — don&apos;t conclude</span>
+                  </div>
                 </div>
               </>
             )}
