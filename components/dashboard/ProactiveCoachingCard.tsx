@@ -3,9 +3,8 @@
 import { useMemo } from 'react'
 import { Trade, RiskRules } from '@/types'
 import { cn, formatCurrency } from '@/lib/utils'
-import { classifyWindow, ctTimeLabel, isApprovedWindow } from '@/lib/trade-flags'
 import { parseISO, subDays, format } from 'date-fns'
-import { ShieldAlert, AlertTriangle, TrendingDown, Brain, Clock, CheckCircle2, Zap } from 'lucide-react'
+import { ShieldAlert, AlertTriangle, TrendingDown, Brain, CheckCircle2, Zap } from 'lucide-react'
 
 interface CoachingSignal {
   id: string
@@ -132,27 +131,6 @@ export default function ProactiveCoachingCard({ trades, todayTrades, riskRules }
         icon: <AlertTriangle className="h-4 w-4 flex-shrink-0" />,
         title: `C-grade rate ${Math.round(cRateThis * 100)}% this week${increasing ? ' — rising' : ''}`,
         detail: `${cThis} C-grades in last 7 days${prior7.length > 0 ? ` vs ${cPrior} the prior 7` : ''}. Something in your execution is drifting — review the grade rubric.`,
-      })
-    }
-
-    // ── Time window violations this week ─────────────────────────────────────
-    const windowViolations = last7.filter((t) => {
-      const ctLabel = ctTimeLabel(t.entry_time)
-      if (!ctLabel) return false
-      const [h, m] = ctLabel.split(':').map(Number)
-      const mins = h * 60 + m
-      const window = classifyWindow(mins)
-      return !isApprovedWindow(window) && window !== 'building'
-    })
-    if (windowViolations.length >= 2) {
-      const dateSet = new Set(windowViolations.map((t) => format(parseISO(t.date), 'MM/dd')))
-      const dates = Array.from(dateSet).join(', ')
-      result.push({
-        id: 'time-window-violations',
-        severity: 'warning',
-        icon: <Clock className="h-4 w-4 flex-shrink-0" />,
-        title: `${windowViolations.length} trades outside approved CT windows this week`,
-        detail: `Entries in dead zone or after session close on: ${dates}. Approved windows: 08:45–11:00 CT (ORB/continuation) and 12:30–14:00 CT (conditional).`,
       })
     }
 
