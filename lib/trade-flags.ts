@@ -75,13 +75,13 @@ export function tradeIndexForDay(trade: Trade, allTrades: Trade[]): number {
 export function computeTradeFlags(trade: Trade, allTrades: Trade[]): TradeFlag[] {
   const flags: TradeFlag[] = []
 
-  // Apex 2-trade-per-day limit
+  // Apex 5-trade-per-day limit
   const idx = tradeIndexForDay(trade, allTrades)
-  if (idx > 2) {
+  if (idx > 5) {
     flags.push({
       type: 'apex_trade_count',
       severity: 'critical',
-      detail: `Trade #${idx} on ${trade.date} — Apex hard rule: max 2 trades/day`,
+      detail: `Trade #${idx} on ${trade.date} — Apex hard rule: max 5 trades/day`,
     })
   }
 
