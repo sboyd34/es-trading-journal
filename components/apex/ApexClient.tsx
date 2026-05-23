@@ -26,18 +26,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
-
-// ── Apex 4.0 account configurations ─────────────────────────────────────────
-
-const APEX_CONFIGS = {
-  25000:  { profitTarget: 1500,  trailingDrawdown: 1000, dll: 500,  maxContracts: 4  },
-  50000:  { profitTarget: 3000,  trailingDrawdown: 2000, dll: 1000, maxContracts: 6  },
-  100000: { profitTarget: 6000,  trailingDrawdown: 3000, dll: 1500, maxContracts: 8  },
-  150000: { profitTarget: 9000,  trailingDrawdown: 4000, dll: 2000, maxContracts: 12 },
-} as const
-
-type AccountSize = keyof typeof APEX_CONFIGS
-const ACCOUNT_SIZES = [25000, 50000, 100000, 150000] as AccountSize[]
+import { APEX_CONFIGS, ACCOUNT_SIZES, type AccountSize } from '@/lib/apex-config'
 
 const ACTIVE_ACCOUNT_KEY = 'apex.activeAccountId'
 
