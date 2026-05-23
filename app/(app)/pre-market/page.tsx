@@ -23,6 +23,7 @@ import {
   CalendarClock,
 } from 'lucide-react'
 import MarketStateCard from '@/components/market/MarketStateCard'
+import PositionSizer from '@/components/pre-market/PositionSizer'
 
 interface PreMarketNewsArticle {
   id: string
@@ -222,6 +223,8 @@ export default function PreMarketPage() {
           {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
       </div>
+
+      <PositionSizer />
 
       {/* Auto-pulled market state (yesterday H/L/C, today's gap, opening range) */}
       <MarketStateCard
