@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { Trade } from '@/types'
 import { createClient } from '@/lib/supabase/client'
@@ -18,6 +18,7 @@ import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/Indic
 import TradeNarrativePanel from '@/components/journal/TradeNarrativePanel'
 import SessionTimeline from '@/components/journal/SessionTimeline'
 import EodScorecard from '@/components/journal/EodScorecard'
+import { BulkDeleteBar } from '@/components/journal/BulkDeleteBar'
 
 const CandlestickChart = dynamic(
   () => import('@/components/blind-backtest/CandlestickChart'),
@@ -55,6 +56,10 @@ export default function JournalPage() {
   const [parsedTrades, setParsedTrades] = useState<ReturnType<typeof parseTradovateCSV>>([])
   const [importing, setImporting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+
+  // Bulk delete selection (Set of trade IDs)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   const supabase = createClient()
 
@@ -120,6 +125,14 @@ export default function JournalPage() {
     if (filterInstrument !== 'all' && (t.instrument || 'ES') !== filterInstrument) return false
     return true
   })
+
+  // Bulk selection derived state — useMemo per codebase convention
+  const visibleSelectedCount = useMemo(
+    () => filteredTrades.reduce((acc, t) => acc + (selectedIds.has(t.id) ? 1 : 0), 0),
+    [filteredTrades, selectedIds],
+  )
+  const allVisibleSelected = visibleSelectedCount > 0 && visibleSelectedCount === filteredTrades.length
+  const someVisibleSelected = visibleSelectedCount > 0 && visibleSelectedCount < filteredTrades.length
 
   // Precompute rule flags for every trade (deterministic, no API call).
   const flagMap = useMemo(() => {
@@ -232,6 +245,74 @@ export default function JournalPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to delete')
     }
   }
+
+  function toggleRowSelection(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleVisibleSelection() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (visibleSelectedCount > 0) {
+        // Some or all visible selected → clear all visible
+        for (const t of filteredTrades) next.delete(t.id)
+      } else {
+        // None selected → add all visible
+        for (const t of filteredTrades) next.add(t.id)
+      }
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    const count = selectedIds.size
+    if (!confirm(`Delete ${count} trade${count === 1 ? '' : 's'}?\n\nThis cannot be undone.`)) return
+
+    setBulkDeleting(true)
+    try {
+      const idsArray = Array.from(selectedIds)
+      const res = await fetch('/api/trades/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: idsArray }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(err.error || 'Failed to bulk delete')
+      }
+      const { deleted } = await res.json()
+      // Remove from local state
+      const deletedSet = new Set(idsArray)
+      setTrades((prev) => prev.filter((t) => !deletedSet.has(t.id)))
+      // Clear annotating / lightbox if their trade was deleted
+      if (annotatingTrade && deletedSet.has(annotatingTrade.id)) setAnnotatingTrade(null)
+      if (lightboxTrade && deletedSet.has(lightboxTrade.id)) setLightboxTrade(null)
+      clearSelection()
+      toast.success(`Deleted ${deleted} trade${deleted === 1 ? '' : 's'}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to bulk delete')
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  // Header checkbox needs imperative .indeterminate (JSX doesn't support it)
+  const headerCheckboxRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someVisibleSelected
+    }
+  }, [someVisibleSelected])
 
   return (
     <div className="space-y-6">
@@ -375,6 +456,17 @@ export default function JournalPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-700/50">
+                      <th className="w-10 px-3 py-3">
+                        <input
+                          ref={headerCheckboxRef}
+                          type="checkbox"
+                          checked={allVisibleSelected}
+                          onChange={toggleVisibleSelection}
+                          aria-label="Select all visible trades"
+                          className="h-4 w-4 rounded border-gray-600 bg-gray-800 accent-blue-500 cursor-pointer"
+                          disabled={filteredTrades.length === 0}
+                        />
+                      </th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Date</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Instr</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Time</th>
@@ -416,6 +508,15 @@ export default function JournalPage() {
                           hasWarning && !hasCritical && 'bg-amber-500/5',
                         )}
                       >
+                        <td className="w-10 px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(trade.id)}
+                            onChange={() => toggleRowSelection(trade.id)}
+                            aria-label={`Select trade ${trade.id}`}
+                            className="h-4 w-4 rounded border-gray-600 bg-gray-800 accent-blue-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             {hasFlags && (
@@ -880,6 +981,13 @@ export default function JournalPage() {
           )
         })()}
       </Modal>
+
+      <BulkDeleteBar
+        count={selectedIds.size}
+        busy={bulkDeleting}
+        onDelete={handleBulkDelete}
+        onCancel={clearSelection}
+      />
     </div>
   )
 }
