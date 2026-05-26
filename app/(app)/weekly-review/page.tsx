@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Trade, WeeklyReview } from '@/types'
+import { Trade, WeeklyReview, DailySession } from '@/types'
+import { computeBehaviorStats } from '@/lib/behavior-stats'
+import BehaviorPatternsSection from '@/components/weekly-review/BehaviorPatternsSection'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -59,22 +61,44 @@ export default function WeeklyReviewPage() {
   const [weekStart, setWeekStart] = useState(thisWeekMonday())
   const [review, setReview] = useState<WeeklyReview | null>(null)
   const [weekTrades, setWeekTrades] = useState<Trade[]>([])
+  const [weekSessions, setWeekSessions] = useState<DailySession[]>([])
+  const [priorWeekSessions, setPriorWeekSessions] = useState<DailySession[]>([])
+  const [priorWeekTrades, setPriorWeekTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
 
   const weekEnd = useMemo(() => isoDate(addDays(dateOnly(weekStart), 6)), [weekStart])
 
+  // Prior week date range (for behavior delta computation)
+  const priorWeekStart = useMemo(
+    () => isoDate(addDays(dateOnly(weekStart), -7)),
+    [weekStart],
+  )
+  const priorWeekEnd = useMemo(
+    () => isoDate(addDays(dateOnly(weekStart), -1)),
+    [weekStart],
+  )
+
   const loadWeek = useCallback(async () => {
     setLoading(true)
     setReview(null)
     setWeekTrades([])
+    setWeekSessions([])
+    setPriorWeekSessions([])
+    setPriorWeekTrades([])
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       setLoading(false)
       return
     }
 
-    const [{ data: reviewData }, { data: tradeData }] = await Promise.all([
+    const [
+      { data: reviewData },
+      { data: tradeData },
+      { data: sessionData },
+      { data: priorSessionData },
+      { data: priorTradeData },
+    ] = await Promise.all([
       supabase
         .from('weekly_reviews')
         .select('*')
@@ -88,16 +112,48 @@ export default function WeeklyReviewPage() {
         .gte('date', weekStart)
         .lte('date', weekEnd)
         .order('entry_time', { ascending: true }),
+      supabase
+        .from('daily_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('date', weekStart)
+        .lte('date', weekEnd),
+      supabase
+        .from('daily_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('date', priorWeekStart)
+        .lte('date', priorWeekEnd),
+      supabase
+        .from('trades')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('date', priorWeekStart)
+        .lte('date', priorWeekEnd),
     ])
 
     if (reviewData) setReview(reviewData as WeeklyReview)
     setWeekTrades((tradeData as Trade[]) || [])
+    setWeekSessions((sessionData as DailySession[]) || [])
+    setPriorWeekSessions((priorSessionData as DailySession[]) || [])
+    setPriorWeekTrades((priorTradeData as Trade[]) || [])
     setLoading(false)
-  }, [supabase, weekStart, weekEnd])
+  }, [supabase, weekStart, weekEnd, priorWeekStart, priorWeekEnd])
 
   useEffect(() => {
     loadWeek()
   }, [loadWeek])
+
+  const behaviorStats = useMemo(
+    () => computeBehaviorStats(
+      weekStart,
+      weekSessions,
+      weekTrades,
+      priorWeekSessions,
+      priorWeekTrades,
+    ),
+    [weekStart, weekSessions, weekTrades, priorWeekSessions, priorWeekTrades],
+  )
 
   const weekStats = useMemo(() => {
     if (!weekTrades.length) return null
@@ -220,6 +276,9 @@ export default function WeeklyReviewPage() {
               </p>
             </div>
           )}
+
+          {/* Behavior Patterns — deterministic discipline stats */}
+          <BehaviorPatternsSection stats={behaviorStats} />
 
           {/* Discipline — F trades this week. Silent when zero. */}
           {weekDamage && (
