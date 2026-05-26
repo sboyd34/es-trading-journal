@@ -12,7 +12,10 @@ import TradeAnnotationForm from '@/components/journal/TradeAnnotationForm'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
-import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
+import { Upload, Filter, Camera, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, LineChart, RefreshCw, Sparkles, Trash2, Lock } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { isGateActive, getTodayChicagoDateString } from '@/lib/eod-gate'
+import type { DailySession } from '@/types'
 import type { TradeChartResponse } from '@/app/api/trades/[id]/chart/route'
 import IndicatorToggleBar, { useIndicatorPrefs } from '@/components/charts/IndicatorToggleBar'
 import TradeNarrativePanel from '@/components/journal/TradeNarrativePanel'
@@ -28,7 +31,15 @@ const CandlestickChart = dynamic(
 type Tab = 'log' | 'import' | 'timeline' | 'eod'
 
 export default function JournalPage() {
-  const [tab, setTab] = useState<Tab>('log')
+  const searchParams = useSearchParams()
+  const initialTab: Tab = (() => {
+    const param = searchParams?.get('tab')
+    if (param === 'log' || param === 'import' || param === 'timeline' || param === 'eod') {
+      return param
+    }
+    return 'log'
+  })()
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
   const [checklistTrade, setChecklistTrade] = useState<Trade | null>(null)
@@ -61,6 +72,9 @@ export default function JournalPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
 
+  // EOD gate — today's daily_session row (for isReviewComplete check)
+  const [todaySession, setTodaySession] = useState<DailySession | null>(null)
+
   const supabase = createClient()
 
   const loadTrades = useCallback(async () => {
@@ -81,6 +95,23 @@ export default function JournalPage() {
   useEffect(() => {
     loadTrades()
   }, [loadTrades])
+
+  // Fetch today's daily_session for EOD gate check
+  useEffect(() => {
+    const todayStr = getTodayChicagoDateString()
+    const loadSession = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data } = await supabase
+        .from('daily_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('date', todayStr)
+        .maybeSingle()
+      setTodaySession((data as DailySession | null) ?? null)
+    }
+    loadSession()
+  }, [supabase])
 
   // When the lightbox opens, pick a sensible default tab and prefetch the
   // proxy chart so the Auto tab is ready when the user switches to it.
@@ -125,6 +156,17 @@ export default function JournalPage() {
     if (filterInstrument !== 'all' && (t.instrument || 'ES') !== filterInstrument) return false
     return true
   })
+
+  // EOD gate — today's date (Chicago) and gate active status
+  const todayChicagoStr = useMemo(() => getTodayChicagoDateString(), [])
+  const todayTrades = useMemo(
+    () => trades.filter((t) => t.date === todayChicagoStr),
+    [trades, todayChicagoStr],
+  )
+  const gateActive = useMemo(
+    () => isGateActive(new Date(), todayTrades, todaySession),
+    [todayTrades, todaySession],
+  )
 
   // Bulk selection derived state — useMemo per codebase convention
   const visibleSelectedCount = useMemo(
@@ -557,11 +599,23 @@ export default function JournalPage() {
                         <td className="px-4 py-3 text-right text-gray-300">{trade.quantity}</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono text-xs">{trade.entry_price.toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-gray-300 font-mono text-xs">{trade.exit_price.toFixed(2)}</td>
-                        <td className={cn('px-4 py-3 text-right text-xs', getPnLColor(trade.gross_pnl))}>
-                          {formatCurrency(trade.gross_pnl)}
+                        <td className={cn('px-4 py-3 text-right text-xs', !(gateActive && trade.date === todayChicagoStr) && getPnLColor(trade.gross_pnl))}>
+                          {gateActive && trade.date === todayChicagoStr ? (
+                            <span title="Locked until EOD review completed" className="inline-flex items-center text-gray-500">
+                              <Lock className="h-3.5 w-3.5" />
+                            </span>
+                          ) : (
+                            formatCurrency(trade.gross_pnl)
+                          )}
                         </td>
-                        <td className={cn('px-4 py-3 text-right font-semibold', getPnLColor(trade.net_pnl))}>
-                          {formatCurrency(trade.net_pnl)}
+                        <td className={cn('px-4 py-3 text-right font-semibold', !(gateActive && trade.date === todayChicagoStr) && getPnLColor(trade.net_pnl))}>
+                          {gateActive && trade.date === todayChicagoStr ? (
+                            <span title="Locked until EOD review completed" className="inline-flex items-center text-gray-500">
+                              <Lock className="h-3.5 w-3.5" />
+                            </span>
+                          ) : (
+                            formatCurrency(trade.net_pnl)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center text-lg">
                           {getMoodEmoji(trade.mood)}

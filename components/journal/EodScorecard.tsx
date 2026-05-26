@@ -5,8 +5,21 @@ import { Trade, EndOfDaySummary, DisciplineBreakdown, DailySession } from '@/typ
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
-import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Sparkles, Loader2, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { GATE_REQUIRED_FIELDS } from '@/lib/eod-gate'
+
+// Doc-mandated question wording shown as subtitle on each gate field.
+// Source: ~/Downloads/Trading_Journal_ES_MES.docx — End-of-Day Review.
+const GATE_FIELD_SUBTITLES: Record<string, string> = {
+  mistakes: 'Q1: Which rules did I follow today, and which did I break? Why?',
+  emotional_state: 'Q2: If you broke a rule, what was the emotional trigger? (FOMO, anger, overconfidence, boredom)',
+  tomorrow_focus: 'Q3: What is the ONE adjustment you will make tomorrow?',
+}
+
+function isGateField(key: keyof EndOfDaySummary): boolean {
+  return (GATE_REQUIRED_FIELDS as readonly string[]).includes(key as string)
+}
 
 interface Props {
   trades: Trade[]
@@ -288,9 +301,20 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
         <div className="space-y-3">
           {SUMMARY_KEYS.map((key) => (
             <div key={key}>
+              {isGateField(key) && (
+                <div className="flex items-center gap-1.5 text-xs text-amber-400 mb-1">
+                  <Lock className="h-3 w-3" />
+                  <span className="font-medium">Required to unlock today&rsquo;s P&amp;L</span>
+                </div>
+              )}
               <label className="block text-xs font-medium text-gray-400 mb-1">
                 {SUMMARY_LABELS[key]}
               </label>
+              {isGateField(key) && (
+                <p className="text-xs text-gray-400 -mt-1 mb-2 italic">
+                  {GATE_FIELD_SUBTITLES[key as string]}
+                </p>
+              )}
               <textarea
                 rows={2}
                 value={summary?.[key] ?? ''}
