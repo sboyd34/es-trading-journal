@@ -2,11 +2,13 @@
 
 import { DashboardStats } from '@/types'
 import { formatCurrency, getPnLColor, cn } from '@/lib/utils'
+import { EodGateCard } from '@/components/ui/EodGateCard'
 
 interface StatsCardsProps {
   stats: DashboardStats
   todayPnL: number
   todayGrossPnL: number
+  gateActive?: boolean
 }
 
 interface StatCardProps {
@@ -26,7 +28,7 @@ function StatCard({ label, value, valueColor, subtext }: StatCardProps) {
   )
 }
 
-export default function StatsCards({ stats, todayPnL, todayGrossPnL }: StatsCardsProps) {
+export default function StatsCards({ stats, todayPnL, todayGrossPnL, gateActive = false }: StatsCardsProps) {
   const streakLabel = stats.currentStreak >= 0
     ? `${stats.currentStreak}W streak`
     : `${Math.abs(stats.currentStreak)}L streak`
@@ -40,12 +42,16 @@ export default function StatsCards({ stats, todayPnL, todayGrossPnL }: StatsCard
         valueColor={getPnLColor(stats.totalPnL)}
         subtext={`Gross ${formatCurrency(stats.totalGrossPnL)}`}
       />
-      <StatCard
-        label="Today's P&L"
-        value={formatCurrency(todayPnL)}
-        valueColor={getPnLColor(todayPnL)}
-        subtext={`Gross ${formatCurrency(todayGrossPnL)}`}
-      />
+      {gateActive ? (
+        <EodGateCard label="Today's P&L" />
+      ) : (
+        <StatCard
+          label="Today's P&L"
+          value={formatCurrency(todayPnL)}
+          valueColor={getPnLColor(todayPnL)}
+          subtext={`Gross ${formatCurrency(todayGrossPnL)}`}
+        />
+      )}
       <StatCard
         label="Win Rate"
         value={`${stats.winRate.toFixed(1)}%`}

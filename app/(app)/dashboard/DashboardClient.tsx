@@ -20,6 +20,7 @@ import ProactiveCoachingCard from '@/components/dashboard/ProactiveCoachingCard'
 import OffSystemDamageCard from '@/components/dashboard/OffSystemDamageCard'
 import DisciplineScoreCard from '@/components/dashboard/DisciplineScoreCard'
 import MarketStateCard from '@/components/market/MarketStateCard'
+import { isGateActive } from '@/lib/eod-gate'
 
 interface DashboardClientProps {
   trades: Trade[]
@@ -95,6 +96,10 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
 
 export default function DashboardClient({ trades, todayTrades, riskRules, session, userId, date }: DashboardClientProps) {
   const stats = useMemo(() => computeStats(trades, todayTrades), [trades, todayTrades])
+  const gateActive = useMemo(
+    () => isGateActive(new Date(), todayTrades, session),
+    [todayTrades, session],
+  )
   const [postLossDay, setPostLossDay] = useState(false)
   const [macroEventDetected, setMacroEventDetected] = useState(false)
 
@@ -148,7 +153,7 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
       </div>
 
       {/* Stats cards */}
-      <StatsCards stats={stats} todayPnL={stats.todayPnL} todayGrossPnL={stats.todayGrossPnL} />
+      <StatsCards stats={stats} todayPnL={stats.todayPnL} todayGrossPnL={stats.todayGrossPnL} gateActive={gateActive} />
 
       {/* Off-system damage — silent when there are no F trades this month */}
       <OffSystemDamageCard trades={trades} />
