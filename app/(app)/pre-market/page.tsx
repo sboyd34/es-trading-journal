@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import MarketStateCard from '@/components/market/MarketStateCard'
 import PositionSizer from '@/components/pre-market/PositionSizer'
+import PreSessionRitual from '@/components/pre-market/PreSessionRitual'
 
 interface PreMarketNewsArticle {
   id: string
@@ -223,6 +224,8 @@ export default function PreMarketPage() {
           {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
       </div>
+
+      <PreSessionRitual />
 
       <PositionSizer />
 
