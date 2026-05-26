@@ -65,12 +65,22 @@ export interface DailySession {
   date: string
   pre_market_brief: PreMarketBrief | null
   end_of_day_summary: EndOfDaySummary | null
+  pre_open_check: PreOpenCheck | null
   checklist_passed: boolean | null
   emotion_score: number | null
   notes: string | null
   created_at: string
   discipline_score: number | null
   discipline_breakdown: DisciplineBreakdown | null
+}
+
+export interface PreOpenCheck {
+  rules_read: boolean
+  bracket_loaded: boolean
+  targets_written: boolean
+  not_revenge_trading: boolean
+  /** ISO 8601 timestamp; present only when all 4 boxes are true AND user clicked Save */
+  saved_at?: string
 }
 
 export interface PreMarketBrief {
