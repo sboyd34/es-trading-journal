@@ -21,6 +21,7 @@ import OffSystemDamageCard from '@/components/dashboard/OffSystemDamageCard'
 import DisciplineScoreCard from '@/components/dashboard/DisciplineScoreCard'
 import MarketStateCard from '@/components/market/MarketStateCard'
 import { isGateActive } from '@/lib/eod-gate'
+import PreSessionBanner from '@/components/dashboard/PreSessionBanner'
 
 interface DashboardClientProps {
   trades: Trade[]
@@ -151,6 +152,9 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
         </div>
         <TradovateSyncBadge />
       </div>
+
+      {/* Stats cards */}
+      <PreSessionBanner session={session} />
 
       {/* Stats cards */}
       <StatsCards stats={stats} todayPnL={stats.todayPnL} todayGrossPnL={stats.todayGrossPnL} gateActive={gateActive} />
