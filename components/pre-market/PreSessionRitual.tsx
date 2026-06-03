@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Lock } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
 import type { PreOpenCheck } from '@/types'
@@ -25,8 +25,8 @@ const EMPTY_CHECK: PreOpenCheck = {
  * - Renders the 15 anti-greed rules in a numbered list
  * - Provides a "I have read these aloud" button (auto-ticks box #1)
  * - Renders the 4-item Pre-Open Check with per-checkbox auto-save
- * - Save button enabled only when all 4 boxes are true; on click,
- *   persists saved_at + sets checklist_passed = true atomically
+ * - Auto-completes (checklist_passed = true) the moment all 4 boxes
+ *   are ticked; no explicit Save button required
  *
  * Spec: docs/superpowers/specs/2026-05-26-preopen-ritual-design.md
  */
@@ -36,7 +36,9 @@ export default function PreSessionRitual() {
   const [check, setCheck] = useState<PreOpenCheck>(EMPTY_CHECK)
   const [checklistPassed, setChecklistPassed] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  // Tracks whether the auto-complete effect has already fired this session
+  // so we don't re-save on every render after it's already complete.
+  const hasAutoSaved = useRef(false)
 
   // Load today's existing check state (if any)
   useEffect(() => {
@@ -60,7 +62,7 @@ export default function PreSessionRitual() {
   }, [supabase, todayStr])
 
   // Per-checkbox auto-save: upserts the pre_open_check JSONB on every toggle.
-  // Does NOT set checklist_passed — that only flips on explicit Save.
+  // Does NOT set checklist_passed — that only flips in the auto-complete effect.
   const persistCheck = useCallback(
     async (next: PreOpenCheck) => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -107,38 +109,42 @@ export default function PreSessionRitual() {
     Number(check.not_revenge_trading)
   const allChecked = checkedCount === 4
 
-  const handleSave = useCallback(async () => {
-    if (!allChecked || saving) return
-    setSaving(true)
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast.error('Not signed in')
-        return
+  // Auto-complete: the moment all 4 boxes are ticked, persist checklist_passed.
+  // Guard with hasAutoSaved ref so this fires at most once per session
+  // (covers the case where the page re-renders after the save succeeds).
+  useEffect(() => {
+    if (!allChecked || checklistPassed || hasAutoSaved.current) return
+    hasAutoSaved.current = true
+    const run = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        const savedAt = new Date().toISOString()
+        const finalCheck: PreOpenCheck = { ...check, saved_at: savedAt }
+        const { error } = await supabase
+          .from('daily_sessions')
+          .upsert(
+            {
+              user_id: user.id,
+              date: todayStr,
+              pre_open_check: finalCheck,
+              checklist_passed: true,
+            },
+            { onConflict: 'user_id,date' },
+          )
+        if (error) throw error
+        setCheck(finalCheck)
+        setChecklistPassed(true)
+        toast.success('Ritual complete — have a disciplined session')
+      } catch (err) {
+        // Reset guard so a transient error doesn't permanently block re-try
+        hasAutoSaved.current = false
+        toast.error(err instanceof Error ? err.message : 'Failed to save ritual')
       }
-      const savedAt = new Date().toISOString()
-      const finalCheck: PreOpenCheck = { ...check, saved_at: savedAt }
-      const { error } = await supabase
-        .from('daily_sessions')
-        .upsert(
-          {
-            user_id: user.id,
-            date: todayStr,
-            pre_open_check: finalCheck,
-            checklist_passed: true,
-          },
-          { onConflict: 'user_id,date' },
-        )
-      if (error) throw error
-      setCheck(finalCheck)
-      setChecklistPassed(true)
-      toast.success('Ritual complete — have a disciplined session')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save ritual')
-    } finally {
-      setSaving(false)
     }
-  }, [allChecked, check, saving, supabase, todayStr])
+    run()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allChecked])
 
   if (loading) {
     return (
@@ -210,33 +216,6 @@ export default function PreSessionRitual() {
         </div>
       </div>
 
-      {/* Save */}
-      <div className="pt-2 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!allChecked || saving}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition',
-            allChecked && !saving
-              ? 'bg-emerald-500 text-white hover:bg-emerald-400'
-              : 'bg-gray-700 text-gray-400 cursor-not-allowed',
-          )}
-        >
-          {saving
-            ? 'Saving…'
-            : !allChecked
-              ? `Save (${checkedCount}/4)`
-              : checklistPassed
-                ? 'Save again'
-                : 'Save'}
-        </button>
-        {!allChecked && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
-            <Lock className="h-3 w-3" /> Tick all 4 to enable
-          </span>
-        )}
-      </div>
     </section>
   )
 }
