@@ -26,6 +26,7 @@ import MarketStateCard from '@/components/market/MarketStateCard'
 import PositionSizer from '@/components/pre-market/PositionSizer'
 import PreSessionRitual from '@/components/pre-market/PreSessionRitual'
 import BracketSpecCard from '@/components/pre-market/BracketSpecCard'
+import APlusPlaybookCard from '@/components/pre-market/APlusPlaybookCard'
 
 interface PreMarketNewsArticle {
   id: string
@@ -229,6 +230,8 @@ export default function PreMarketPage() {
       <PreSessionRitual />
 
       <BracketSpecCard />
+
+      <APlusPlaybookCard />
 
       <PositionSizer />
 
