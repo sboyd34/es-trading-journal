@@ -88,7 +88,6 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
   const [generatingSummary, setGeneratingSummary] = useState(false)
   const [emotionScore, setEmotionScore] = useState<number | null>(null)
   const [notes, setNotes] = useState('')
-  const [existingSessionId, setExistingSessionId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const disciplineTotal = setup + emotion + prep + gradeAdherence
@@ -112,7 +111,6 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
 
       if (data) {
         const session = data as DailySession
-        setExistingSessionId(session.id)
         if (session.discipline_breakdown) {
           setSetup(session.discipline_breakdown.setup ?? 20)
           setEmotion(session.discipline_breakdown.emotion ?? 20)
@@ -125,7 +123,6 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
         setEmotionScore(session.emotion_score)
         setNotes(session.notes ?? '')
       } else {
-        setExistingSessionId(null)
         setSetup(20); setEmotion(20); setPrep(20); setGradeAdherence(20)
         setSummary(null)
         setEmotionScore(null)
@@ -181,21 +178,18 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
         notes: notes || null,
       }
 
-      if (existingSessionId) {
-        const { error } = await supabase
-          .from('daily_sessions')
-          .update(payload)
-          .eq('id', existingSessionId)
-        if (error) throw error
-      } else {
-        const { data, error } = await supabase
-          .from('daily_sessions')
-          .insert(payload)
-          .select('id')
-          .single()
-        if (error) throw error
-        setExistingSessionId((data as { id: string }).id)
-      }
+      // Upsert on the (user_id, date) unique key instead of branching on a
+      // client-cached row id. A daily_sessions row for this date can be created
+      // AFTER this component loaded — the dashboard's DisciplineScoreCard
+      // auto-upsert and the AI daily-summary route both do this. The old
+      // insert/update branch then left a stale-null id and the INSERT hit
+      // UNIQUE(user_id, date) (Postgres 23505), surfacing as "Failed to save
+      // scorecard". Upsert is collision-proof and matches every other writer
+      // (PreSessionRitual, DisciplineScoreCard).
+      const { error } = await supabase
+        .from('daily_sessions')
+        .upsert(payload, { onConflict: 'user_id,date' })
+      if (error) throw error
 
       toast.success('Scorecard saved')
     } catch (err) {
