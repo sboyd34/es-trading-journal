@@ -45,7 +45,7 @@ P&L is computed via Postgres generated columns based on `trades.instrument`:
 | MES | 5 |
 | MNQ | 2 |
 
-If you see a MES trade reporting 10× the expected P&L, the `add_instrument.sql` migration hasn't been run yet — see Migration workflow.
+`add_instrument.sql` (which adds `instrument` + the generated P&L columns) is applied in prod. If you ever see a MES trade reporting 10× the expected P&L, treat it as a regression — run `npm run check:schema` to confirm the columns are still live (see Migration workflow).
 
 ## Conventions
 
@@ -117,11 +117,13 @@ SQL files live in `supabase/`. No automated tracker yet — runs are manual:
 
 1. Write the migration as `supabase/<verb>_<subject>.sql`
 2. Open the Supabase dashboard → SQL editor → paste & run
-3. Note in session carryover that it's been applied
+3. Run `npm run check:schema` to confirm the new column(s) are live, then note in session carryover that it's been applied
 
-Outstanding migrations (verify before relying on related features):
+`npm run check:schema` auto-parses every `ADD COLUMN` in `supabase/*.sql` and probes the live DB — a committed-but-unapplied migration shows up as a named missing column with the exact `.sql` file to run. Run it before any deploy that depends on a recent migration.
 
-- `add_instrument.sql` — MES/NQ/MNQ P&L correction. **Must be run** before MES trades report correct P&L.
+Outstanding migrations (verify with `npm run check:schema`):
+
+- `add_pre_open_check.sql` — adds `daily_sessions.pre_open_check`. **Must be run** or the pre-market ritual silently fails to save (Postgres `42703`), which also pins the Discipline Score's `prep` factor at 0.
 
 ## Memory artifacts the user maintains
 
