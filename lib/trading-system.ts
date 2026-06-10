@@ -1,4 +1,5 @@
 export const SYSTEM_SETUPS = [
+  'A+ Confluence',
   'ORB Break',
   'TTM Squeeze',
   'AVWAP Bounce',
