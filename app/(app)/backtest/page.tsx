@@ -54,6 +54,54 @@ function computeStats(trades: BacktestTrade[]) {
   return { total, winRate, totalPnL, profitFactor, avgR, winners: winners.length, losers: losers.length }
 }
 
+// ── Edge-decay scoring ────────────────────────────────────────────────────────
+// Measures how well a setup's *backtested* edge survives in *live* trading.
+// The verdict's tone drives the badge color in the scorecard UI.
+
+type EdgeTone = 'good' | 'warn' | 'bad' | 'neutral'
+
+interface EdgeVerdict {
+  label: string
+  tone: EdgeTone
+}
+
+const EDGE_TONE_CLASSES: Record<EdgeTone, string> = {
+  good: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  warn: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  bad: 'bg-red-500/10 text-red-400 border-red-500/30',
+  neutral: 'bg-gray-700/40 text-gray-400 border-gray-600/40',
+}
+
+/**
+ * Turn a setup's decay numbers into a plain-language verdict.
+ *
+ *   winRateDecay   = live win%  − backtest win%   (negative = worse live)
+ *   avgPnLDecay    = live avg$   − backtest avg$    (negative = worse live)
+ *   liveAvgPnL     = live average $ per trade
+ *   backtestAvgPnL = backtest average $ per trade
+ *   sampleSize     = min(backtest count, live count) — your confidence floor
+ *
+ * Cutoffs lean tight (−5 / −12) on purpose: Apex drawdowns are unforgiving, so a
+ * false alarm costs nothing but a missed collapse costs the account. Raise the
+ * sample floor as live history grows to make verdicts more trustworthy.
+ */
+function classifyEdge(input: {
+  winRateDecay: number
+  avgPnLDecay: number
+  liveAvgPnL: number
+  backtestAvgPnL: number
+  sampleSize: number
+}): EdgeVerdict {
+  const { winRateDecay, liveAvgPnL, backtestAvgPnL, sampleSize } = input
+  if (sampleSize < 5) return { label: 'Building sample', tone: 'neutral' }
+  if (winRateDecay >= -5 && liveAvgPnL < 0 && backtestAvgPnL > 0)
+    return { label: 'Profit leak', tone: 'bad' }
+  if (winRateDecay >= 5) return { label: 'Stronger live', tone: 'good' }
+  if (winRateDecay >= -5) return { label: 'Edge holds', tone: 'good' }
+  if (winRateDecay >= -12) return { label: 'Edge slipping', tone: 'warn' }
+  return { label: 'Edge collapsing', tone: 'bad' }
+}
+
 type PageTab = 'session' | 'analytics' | 'comparison'
 
 export default function BacktestPage() {
@@ -283,6 +331,36 @@ export default function BacktestPage() {
       }
     }).filter((r) => r.backtest.count > 0 || r.live.count > 0)
   }, [trades, liveTrades])
+
+  // Edge decay — only setups with BOTH backtest and live trades can be scored.
+  // Sorted worst-first (most negative win-rate decay on top) so the setups that
+  // are fooling you surface immediately.
+  const edgeDecay = useMemo(() => {
+    return comparison
+      .filter((r) => r.backtest.count > 0 && r.live.count > 0)
+      .map((r) => {
+        const winRateDecay = r.live.winRate - r.backtest.winRate
+        const avgPnLDecay = r.live.avgPnL - r.backtest.avgPnL
+        const sampleSize = Math.min(r.backtest.count, r.live.count)
+        const verdict = classifyEdge({
+          winRateDecay,
+          avgPnLDecay,
+          liveAvgPnL: r.live.avgPnL,
+          backtestAvgPnL: r.backtest.avgPnL,
+          sampleSize,
+        })
+        return {
+          setup: r.setup,
+          winRateDecay,
+          avgPnLDecay,
+          sampleSize,
+          backtestCount: r.backtest.count,
+          liveCount: r.live.count,
+          verdict,
+        }
+      })
+      .sort((a, b) => a.winRateDecay - b.winRateDecay)
+  }, [comparison])
 
   async function handleAiSummary() {
     if (comparison.length === 0) {
@@ -587,6 +665,52 @@ export default function BacktestPage() {
       {/* COMPARISON & AI TAB */}
       {tab === 'comparison' && (
         <div className="space-y-5">
+          {/* Edge Decay Scorecard */}
+          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-700/50">
+              <h2 className="text-sm font-semibold text-gray-200">Edge Decay Scorecard</h2>
+              <p className="text-xs text-gray-500 mt-0.5">How well each backtested edge is holding up live · worst first</p>
+            </div>
+            {edgeDecay.length === 0 ? (
+              <div className="px-5 py-8 text-center text-gray-500 text-sm">
+                Need at least one setup with <span className="text-gray-400">both</span> backtest and live trades to score decay.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-700/30">
+                {edgeDecay.map((row) => (
+                  <div key={row.setup} className="px-5 py-4 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-200 truncate">{row.setup}</span>
+                        <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border', EDGE_TONE_CLASSES[row.verdict.tone])}>
+                          {row.verdict.label}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {row.backtestCount} backtest · {row.liveCount} live
+                        {row.sampleSize < 5 && <span className="text-amber-500/80"> · low sample</span>}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={cn('text-lg font-bold tabular-nums',
+                        row.winRateDecay >= 0 ? 'text-emerald-400' : row.winRateDecay <= -15 ? 'text-red-400' : 'text-amber-400')}>
+                        {row.winRateDecay > 0 ? '+' : ''}{row.winRateDecay.toFixed(0)}%
+                      </p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">win-rate decay</p>
+                    </div>
+                    <div className="text-right w-24">
+                      <p className={cn('text-sm font-semibold tabular-nums',
+                        row.avgPnLDecay >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                        {row.avgPnLDecay > 0 ? '+' : ''}{formatCurrency(row.avgPnLDecay)}
+                      </p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">avg $ decay</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Comparison table */}
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-700/50">
