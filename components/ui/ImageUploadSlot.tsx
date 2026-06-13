@@ -22,8 +22,21 @@ export default function ImageUploadSlot({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
+  function handlePaste(e: React.ClipboardEvent) {
+    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'))
+    const file = item?.getAsFile()
+    if (file) {
+      e.preventDefault()
+      onFile(file)
+    }
+  }
+
   return (
-    <div>
+    <div
+      tabIndex={0}
+      onPaste={handlePaste}
+      className="rounded-lg outline-none focus:ring-2 focus:ring-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/50"
+    >
       {label && <p className="text-xs font-medium text-gray-400 mb-1.5">{label}</p>}
       {currentUrl ? (
         <div className="relative group rounded-lg overflow-hidden border border-gray-700">
@@ -51,11 +64,8 @@ export default function ImageUploadSlot({
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className={`w-full ${heightClass} border-2 border-dashed border-gray-700 hover:border-gray-500 rounded-lg flex flex-col items-center justify-center gap-1.5 text-gray-500 hover:text-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed`}
+        <div
+          className={`w-full ${heightClass} border-2 border-dashed border-gray-700 hover:border-gray-500 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-500 transition ${uploading ? 'opacity-50' : ''}`}
         >
           {uploading ? (
             <>
@@ -64,12 +74,18 @@ export default function ImageUploadSlot({
             </>
           ) : (
             <>
-              <Camera className="h-5 w-5" />
-              <span className="text-xs">Upload chart</span>
-              <span className="text-[10px] text-gray-600">or camera roll on mobile</span>
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="flex flex-col items-center gap-1 px-4 py-1.5 rounded text-gray-500 hover:text-gray-300 transition"
+              >
+                <Camera className="h-5 w-5" />
+                <span className="text-xs">Upload chart</span>
+              </button>
+              <span className="text-[10px] text-gray-600">or click here + ⌘V to paste · camera roll on mobile</span>
             </>
           )}
-        </button>
+        </div>
       )}
       <input
         ref={inputRef}
