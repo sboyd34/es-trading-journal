@@ -596,6 +596,12 @@ export default function TradeAnnotationForm({
             <Camera className="h-4 w-4 text-gray-400" />
             <label className="text-sm font-medium text-gray-300">Chart Screenshots</label>
           </div>
+          <p className="text-xs text-gray-500 mb-2 leading-relaxed">
+            Copy a chart screenshot, click a slot to focus it, then press{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700 text-gray-300 font-mono text-[11px]">⌘V</kbd>{' '}
+            <span className="text-gray-600">(Ctrl+V on Windows)</span> to paste it in — or click{' '}
+            <span className="text-gray-400">Upload chart</span> to pick a file. On mobile, tap a slot to use your camera roll.
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <ImageUploadSlot
               label="Entry Chart"
