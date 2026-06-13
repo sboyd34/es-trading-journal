@@ -91,13 +91,45 @@ def ONL = if isNewSession then Lowest(low, 1)
                then if IsNaN(ONL[1]) then low else Min(ONL[1], low)
           else ONL[1];
 
-# Session-level LIVE state (always LIVE for now — Task 5 adds lifecycle).
-def PDH_live = yes;
-def PDL_live = yes;
-def ONH_live = yes;
-def ONL_live = yes;
-def PWH_live = yes;
-def PWL_live = yes;
+# ── Session-level lifecycle state machine ────────────────────────
+# Buy-side level X (above price):
+#   ACCEPTED first  → close > X
+#   else SWEPT      → high > X AND close <= X (wick through, close back inside)
+#   else LIVE       → otherwise
+# State latches: once transitioned, stays transitioned for the session.
+# _sweepBar is the first bar where _swept becomes true (state-transition edge).
+
+def PDH_accepted = PDH_accepted[1] or (close > PDH);
+def PDH_swept    = PDH_swept[1] or (!PDH_accepted[1] and !PDH_swept[1] and high > PDH and close <= PDH);
+def PDH_live     = !PDH_accepted and !PDH_swept;
+def PDH_sweepBar = PDH_swept and !PDH_swept[1];
+
+def ONH_accepted = ONH_accepted[1] or (close > ONH);
+def ONH_swept    = ONH_swept[1] or (!ONH_accepted[1] and !ONH_swept[1] and high > ONH and close <= ONH);
+def ONH_live     = !ONH_accepted and !ONH_swept;
+def ONH_sweepBar = ONH_swept and !ONH_swept[1];
+
+def PWH_accepted = PWH_accepted[1] or (close > PWH);
+def PWH_swept    = PWH_swept[1] or (!PWH_accepted[1] and !PWH_swept[1] and high > PWH and close <= PWH);
+def PWH_live     = !PWH_accepted and !PWH_swept;
+def PWH_sweepBar = PWH_swept and !PWH_swept[1];
+
+# Sell-side level X (below price): mirror with low/close-back-up logic.
+
+def PDL_accepted = PDL_accepted[1] or (close < PDL);
+def PDL_swept    = PDL_swept[1] or (!PDL_accepted[1] and !PDL_swept[1] and low < PDL and close >= PDL);
+def PDL_live     = !PDL_accepted and !PDL_swept;
+def PDL_sweepBar = PDL_swept and !PDL_swept[1];
+
+def ONL_accepted = ONL_accepted[1] or (close < ONL);
+def ONL_swept    = ONL_swept[1] or (!ONL_accepted[1] and !ONL_swept[1] and low < ONL and close >= ONL);
+def ONL_live     = !ONL_accepted and !ONL_swept;
+def ONL_sweepBar = ONL_swept and !ONL_swept[1];
+
+def PWL_accepted = PWL_accepted[1] or (close < PWL);
+def PWL_swept    = PWL_swept[1] or (!PWL_accepted[1] and !PWL_swept[1] and low < PWL and close >= PWL);
+def PWL_live     = !PWL_accepted and !PWL_swept;
+def PWL_sweepBar = PWL_swept and !PWL_swept[1];
 
 # ── Anchor dots (single point at last bar; forces y-axis to include level) ─
 plot pPDH = if showSessionLevels and showPDH and PDH_live and lastBar then PDH else Double.NaN;
@@ -143,3 +175,35 @@ AddChartBubble(showSessionLevels and showPWH and PWH_live and lastBar, PWH,
     "B-Liq PWH: " + Round(PWH, 2), CreateColor(100, 180, 255), yes);
 AddChartBubble(showSessionLevels and showPWL and PWL_live and lastBar, PWL,
     "S-Liq PWL: " + Round(PWL, 2), Color.PINK, no);
+
+# ── Sweep arrow plots (buy-side: down arrow above bar high) ──────
+plot PDH_sweepArrow = if showSweepArrows and showSessionLevels and showPDH and PDH_sweepBar then high else Double.NaN;
+PDH_sweepArrow.SetPaintingStrategy(PaintingStrategy.ARROW_DOWN);
+PDH_sweepArrow.SetDefaultColor(Color.GRAY);
+PDH_sweepArrow.SetLineWeight(3);
+
+plot ONH_sweepArrow = if showSweepArrows and showSessionLevels and showONH and ONH_sweepBar then high else Double.NaN;
+ONH_sweepArrow.SetPaintingStrategy(PaintingStrategy.ARROW_DOWN);
+ONH_sweepArrow.SetDefaultColor(Color.GRAY);
+ONH_sweepArrow.SetLineWeight(3);
+
+plot PWH_sweepArrow = if showSweepArrows and showSessionLevels and showPWH and PWH_sweepBar then high else Double.NaN;
+PWH_sweepArrow.SetPaintingStrategy(PaintingStrategy.ARROW_DOWN);
+PWH_sweepArrow.SetDefaultColor(Color.GRAY);
+PWH_sweepArrow.SetLineWeight(3);
+
+# ── Sweep arrow plots (sell-side: up arrow below bar low) ────────
+plot PDL_sweepArrow = if showSweepArrows and showSessionLevels and showPDL and PDL_sweepBar then low else Double.NaN;
+PDL_sweepArrow.SetPaintingStrategy(PaintingStrategy.ARROW_UP);
+PDL_sweepArrow.SetDefaultColor(Color.GRAY);
+PDL_sweepArrow.SetLineWeight(3);
+
+plot ONL_sweepArrow = if showSweepArrows and showSessionLevels and showONL and ONL_sweepBar then low else Double.NaN;
+ONL_sweepArrow.SetPaintingStrategy(PaintingStrategy.ARROW_UP);
+ONL_sweepArrow.SetDefaultColor(Color.GRAY);
+ONL_sweepArrow.SetLineWeight(3);
+
+plot PWL_sweepArrow = if showSweepArrows and showSessionLevels and showPWL and PWL_sweepBar then low else Double.NaN;
+PWL_sweepArrow.SetPaintingStrategy(PaintingStrategy.ARROW_UP);
+PWL_sweepArrow.SetDefaultColor(Color.GRAY);
+PWL_sweepArrow.SetLineWeight(3);
