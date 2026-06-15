@@ -177,7 +177,7 @@ BANNED Locations: POC, mid-value, overlapping candles, obvious chop.
 
 Hard Rule: Bias.Setup.Trigger.Location.Risk — all five before every trade.
 Grade: A=all criteria met; B=one minor deviation; C=any rule violation.
-Risk: Apex evaluation hard -$250/soft -$150, max 2 trades/day; PA hard -$150/soft -$120, max 2 trades/day; post-loss day = half base size.
+Risk: Apex evaluation hard -$250/soft -$150; PA hard -$150/soft -$120; post-loss day = half base size.
 
 Return ONLY valid JSON with this exact structure:
 {

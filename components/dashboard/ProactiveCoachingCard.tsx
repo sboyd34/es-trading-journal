@@ -61,17 +61,6 @@ export default function ProactiveCoachingCard({ trades, todayTrades, riskRules }
       })
     }
 
-    // ── Daily trade count ────────────────────────────────────────────────────
-    if (todayTrades.length >= riskRules.max_trades) {
-      result.push({
-        id: 'apex-trade-count',
-        severity: 'critical',
-        icon: <ShieldAlert className="h-4 w-4 flex-shrink-0" />,
-        title: `Max trades reached (${todayTrades.length}/${riskRules.max_trades}) — session closed`,
-        detail: 'You have hit your Apex daily trade limit. No more entries today, regardless of setup quality.',
-      })
-    }
-
     // ── Consecutive loss streak (across recent trades, not just today) ────────
     const recents = [...trades]
       .sort((a, b) => new Date(b.entry_time).getTime() - new Date(a.entry_time).getTime())

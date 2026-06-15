@@ -55,11 +55,9 @@ function RuleBar({ label, current, max, format = String }: RuleBarProps) {
 }
 
 export default function RiskRulesBars({ todayTrades, riskRules }: RiskRulesBarsProps) {
-  const { dailyLoss, tradeCount, consecutiveLosses } = useMemo(() => {
+  const { dailyLoss, consecutiveLosses } = useMemo(() => {
     const totalLoss = todayTrades.reduce((sum, t) => sum + t.net_pnl, 0)
     const currentDailyLoss = Math.max(-totalLoss, 0)
-
-    const count = todayTrades.length
 
     // Count consecutive losses from most recent
     let streak = 0
@@ -73,7 +71,6 @@ export default function RiskRulesBars({ todayTrades, riskRules }: RiskRulesBarsP
 
     return {
       dailyLoss: currentDailyLoss,
-      tradeCount: count,
       consecutiveLosses: streak,
     }
   }, [todayTrades])
@@ -90,12 +87,6 @@ export default function RiskRulesBars({ todayTrades, riskRules }: RiskRulesBarsP
           format={formatCurrency}
         />
         <RuleBar
-          label="Trades Today"
-          current={tradeCount}
-          max={riskRules.max_trades}
-          format={(v) => `${v} trade${v !== 1 ? 's' : ''}`}
-        />
-        <RuleBar
           label="Consecutive Losses"
           current={consecutiveLosses}
           max={riskRules.max_consecutive_losses}
@@ -106,16 +97,14 @@ export default function RiskRulesBars({ todayTrades, riskRules }: RiskRulesBarsP
       {/* Status indicator */}
       <div className={cn(
         'mt-4 px-3 py-2 rounded-lg text-xs font-medium',
-        dailyLoss >= riskRules.max_daily_loss || tradeCount >= riskRules.max_trades || consecutiveLosses >= riskRules.max_consecutive_losses
+        dailyLoss >= riskRules.max_daily_loss || consecutiveLosses >= riskRules.max_consecutive_losses
           ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-          : dailyLoss >= riskRules.max_daily_loss * 0.8 || tradeCount >= riskRules.max_trades * 0.8
+          : dailyLoss >= riskRules.max_daily_loss * 0.8
           ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
           : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
       )}>
         {dailyLoss >= riskRules.max_daily_loss
           ? 'DAILY LOSS LIMIT HIT — Stop trading'
-          : tradeCount >= riskRules.max_trades
-          ? 'MAX TRADES REACHED — Stop trading'
           : consecutiveLosses >= riskRules.max_consecutive_losses
           ? 'CONSECUTIVE LOSS LIMIT — Take a break'
           : 'Risk rules OK — Trade with discipline'}

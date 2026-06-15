@@ -105,17 +105,10 @@ function KillSwitch({ rules }: { rules: string[] }) {
   )
 }
 
-const SESSION_ROWS: [string, string][] = [
-  ['Overnight / Globex (6:00 PM – 9:30 AM CT)', '3 trades'],
-  ['Regular Trading Hours (9:30 AM – 4:00 PM CT)', '3 trades'],
-  ['Daily Hard Ceiling (both sessions)', '5 trades'],
-]
-
 const KILL_SWITCH_BASE = (target: string, loss: string) => [
   `Hit ${target} profit → stop trading, day is done`,
   `Hit ${loss} loss → stop trading, day is done`,
   '3 consecutive losses → stop trading, day is done',
-  '5 trades completed → stop trading, day is done',
   '10-minute mandatory cooldown after every loss',
   'No trades during FOMC, CPI, NFP or any major scheduled news events',
   'Never widen a stop loss — ever',
@@ -229,14 +222,12 @@ export default function FrameworkPage() {
                 rows={[
                   ['Daily Profit Target — STOP when hit', '+$100'],
                   ['Daily Max Loss — STOP when hit', '-$100'],
-                  ['Max Trades Per Day (hard ceiling)', '5 trades'],
                   ['Consecutive Loss Limit', '3 in a row = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
               />
             </SectionCard>
             <SectionCard title="Session Structure">
-              <KVTable rows={SESSION_ROWS} />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
                 Daily max loss and profit target cover BOTH sessions. Hitting -$100 at 2AM ends your entire trading
                 day — RTH does not reset it.
@@ -347,14 +338,12 @@ export default function FrameworkPage() {
                 rows={[
                   ['Daily Profit Target — STOP when hit', '+$200'],
                   ['Daily Max Loss — STOP when hit', '-$200'],
-                  ['Max Trades Per Day (hard ceiling)', '5 trades'],
                   ['Consecutive Loss Limit', '3 in a row = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
               />
             </SectionCard>
             <SectionCard title="Session Structure">
-              <KVTable rows={SESSION_ROWS} />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
                 Daily max loss and profit target cover BOTH sessions. Hitting -$200 at 2AM ends your entire trading
                 day — RTH does not reset it.
@@ -403,7 +392,6 @@ export default function FrameworkPage() {
               { label: 'Qualifying Days', values: ['5 @ $100', '5 @ $200'] },
               { label: 'Daily Profit Target', values: ['$100', '$200'] },
               { label: 'Daily Max Loss', values: ['-$100', '-$200'] },
-              { label: 'Max Trades Per Day', values: ['5', '5'] },
               { label: 'Default Instrument', values: ['/MES — 2', '/MES — 4'] },
               { label: '/ES Contracts (if authorized)', values: ['1', '1'] },
               { label: '/ES Available During Eval?', values: ['NO', 'YES'] },

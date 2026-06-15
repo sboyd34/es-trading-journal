@@ -14,8 +14,8 @@ const POST_LOSS_KEY = 'post_loss_day'
 const ACCOUNT_TYPE_KEY = 'apex_account_type'
 
 const APEX_PRESETS = {
-  Evaluation: { maxDailyLoss: '250', softStop: '150', maxTrades: '2', defaultRisk: '100' },
-  PA: { maxDailyLoss: '150', softStop: '120', maxTrades: '2', defaultRisk: '60' },
+  Evaluation: { maxDailyLoss: '250', softStop: '150', defaultRisk: '100' },
+  PA: { maxDailyLoss: '150', softStop: '120', defaultRisk: '60' },
 }
 
 export default function SettingsPage() {
@@ -44,7 +44,6 @@ export default function SettingsPage() {
 
   // Risk form state
   const [maxDailyLoss, setMaxDailyLoss] = useState('500')
-  const [maxTrades, setMaxTrades] = useState('6')
   const [maxConsecutiveLosses, setMaxConsecutiveLosses] = useState('3')
   const [defaultRisk, setDefaultRisk] = useState('100')
 
@@ -63,7 +62,6 @@ export default function SettingsPage() {
     if (rr) {
       setRiskRules(rr as RiskRules)
       setMaxDailyLoss(rr.max_daily_loss.toString())
-      setMaxTrades(rr.max_trades.toString())
       setMaxConsecutiveLosses(rr.max_consecutive_losses.toString())
       setDefaultRisk(rr.default_risk.toString())
     }
@@ -90,7 +88,6 @@ export default function SettingsPage() {
     const preset = APEX_PRESETS[type]
     setAccountType(type)
     setMaxDailyLoss(preset.maxDailyLoss)
-    setMaxTrades(preset.maxTrades)
     setDefaultRisk(preset.defaultRisk)
     localStorage.setItem(ACCOUNT_TYPE_KEY, type)
     toast.success(`${type} risk rules applied`)
@@ -161,7 +158,6 @@ export default function SettingsPage() {
 
       const updates = {
         max_daily_loss: parseFloat(maxDailyLoss) || 500,
-        max_trades: parseInt(maxTrades) || 6,
         max_consecutive_losses: parseInt(maxConsecutiveLosses) || 3,
         default_risk: parseFloat(defaultRisk) || 100,
       }
@@ -434,10 +430,6 @@ export default function SettingsPage() {
               <p className="text-amber-400 font-semibold">-${APEX_PRESETS[accountType].softStop}</p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3">
-              <p className="text-gray-500 mb-0.5">Max Trades</p>
-              <p className="text-white font-semibold">{APEX_PRESETS[accountType].maxTrades}/day</p>
-            </div>
-            <div className="bg-gray-800 rounded-lg p-3">
               <p className="text-gray-500 mb-0.5">Default Risk</p>
               <p className="text-white font-semibold">${APEX_PRESETS[accountType].defaultRisk}/trade</p>
             </div>
@@ -491,16 +483,6 @@ export default function SettingsPage() {
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">Stop trading when loss hits this amount</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Max Trades Per Day</label>
-            <input
-              type="number"
-              value={maxTrades}
-              onChange={(e) => setMaxTrades(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">Maximum number of trades in a day</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">Max Consecutive Losses</label>

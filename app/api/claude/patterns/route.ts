@@ -57,7 +57,7 @@ Approved Locations: ORH/ORL, VWAP/AVWAP, VAH/VAL, PDH/PDL, overnight high/low, p
 BANNED Locations: POC, mid-value, overlapping candles, chop.
 Hard Rule: Bias.Setup.Trigger.Location.Risk — all five before every trade.
 Grade: A=all criteria met; B=one minor deviation; C=any rule violation.
-Risk: Evaluation hard stop -$250/soft -$150, max 2 trades; PA hard -$150/soft -$120, max 2 trades.
+Risk: Evaluation hard stop -$250/soft -$150; PA hard -$150/soft -$120.
 
 When analyzing patterns, specifically check:
 - What percentage of trades are during approved vs banned time windows?

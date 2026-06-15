@@ -77,8 +77,8 @@ B grade: One minor deviation — slightly early entry, Tier 2 location without e
 C grade: ANY of these: POC/mid-value/chop entry, no bias or wrong direction vs bias, chased extended candle, entered on bubble/fire alone, FOMO or revenge state, blind-touch trade
 
 Apex 50K Risk Framework:
-- Evaluation: hard stop -$250, soft stop -$150, max 2 trades/day, default risk $100/trade (base 1 ES or 2 MES)
-- PA: hard stop -$150, soft stop -$120, max 2 trades/day, default risk $40–80/trade (base 2 MES; 1 ES on A+ only)
+- Evaluation: hard stop -$250, soft stop -$150, default risk $100/trade (base 1 ES or 2 MES)
+- PA: hard stop -$150, soft stop -$120, default risk $40–80/trade (base 2 MES; 1 ES on A+ only)
 - Post-loss day: automatically trade half base size for the session
 
 1-Minute Refinement Rule:

@@ -45,30 +45,10 @@ export function isApprovedWindow(status: WindowStatus): boolean {
   return APPROVED_WINDOWS.includes(status)
 }
 
-// How many trades exist on the same date before (or at) this trade, per entry_time order.
-// Returns 1-based index (1 = first trade of the day).
-export function tradeIndexForDay(trade: Trade, allTrades: Trade[]): number {
-  const sameDayBefore = allTrades.filter(
-    (t) => t.date === trade.date && t.entry_time <= trade.entry_time && t.id !== trade.id,
-  )
-  return sameDayBefore.length + 1
-}
-
 // Compute all rule flags for a single trade given the full trade list.
-export function computeTradeFlags(trade: Trade, allTrades: Trade[]): TradeFlag[] {
-  const flags: TradeFlag[] = []
-
-  // Apex 5-trade-per-day limit
-  const idx = tradeIndexForDay(trade, allTrades)
-  if (idx > 5) {
-    flags.push({
-      type: 'apex_trade_count',
-      severity: 'critical',
-      detail: `Trade #${idx} on ${trade.date} — Apex hard rule: max 5 trades/day`,
-    })
-  }
-
-  return flags
+// The per-day trade-count rule was removed — there is no cap on trades per day.
+export function computeTradeFlags(_trade: Trade, _allTrades: Trade[]): TradeFlag[] {
+  return []
 }
 
 // A "system" trade is one that followed (or attempted to follow) the 5-setup
