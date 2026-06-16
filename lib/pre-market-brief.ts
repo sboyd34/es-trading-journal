@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { fetchPolygonNews } from '@/lib/polygon-news'
+import { fetchUpcomingEarnings } from '@/lib/finnhub-earnings'
 import { getMacroEventsForDate, hasSecondaryWindowConflict } from '@/lib/econ-calendar'
 import { format } from 'date-fns'
 
@@ -44,6 +45,7 @@ When generating the pre-market brief:
 - Build if/then scenarios using the Break→Retest→Confirm→Enter sequence
 - Flag any conditions that would put the trader in the dead zone or secondary window
 - If scheduled macro events are listed, fold them into the plan: elevate risk_level around HIGH-impact prints, and in what_not_to_do warn against fading the first impulse off an 07:30 CT release — let the NY ORB build finish before committing. If the list says the 12:30–14:00 secondary window is CLOSED (a macro event hits 12:00–14:30 CT, e.g. FOMC), say so explicitly in if_then_plan and what_not_to_do.
+- If watchlist earnings are listed, fold them in: a Mag 7 or large-cap BMO print can whip the cash open, so elevate risk_level and warn in what_not_to_do against committing to the NY ORB before the earnings reaction settles. An AMC print is afternoon and overnight risk — flag it for the 12:30–14:00 secondary window and caution against carrying size into the close.
 - What NOT to do must reference specific banned locations or banned behaviors from the system
 
 Keep each field concise — maximum 3 sentences per field except if_then_plan which can be 5 sentences. Be sharp and direct.
@@ -118,6 +120,41 @@ function formatMacroSection(today: string): string {
   return `\n\nScheduled US macro events today (America/Chicago):\n${lines}${gate}`
 }
 
+// Today's watchlist earnings (Mag 7 + financials), formatted for the prompt.
+// Self-contained server-side fetch — 3s timeout, API-key guard, fully non-fatal —
+// so both brief callers inherit it without plumbing. Emits "none scheduled" only
+// when the fetch succeeded and was empty; stays silent when we couldn't check.
+async function buildEarningsSection(today: string): Promise<string> {
+  const finnhubKey = process.env.FINNHUB_API_KEY
+  if (!finnhubKey) return ''
+  try {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Finnhub earnings timeout')), 3000)
+    )
+    const events = await Promise.race([
+      fetchUpcomingEarnings({ apiKey: finnhubKey, days: 1 }),
+      timeout,
+    ])
+    const todays = events.filter((e) => e.date === today)
+    if (todays.length === 0) {
+      return '\n\nWatchlist earnings today: none scheduled.'
+    }
+    const lines = todays
+      .map((e) => {
+        const eps = e.epsEstimate !== null ? ` (EPS est ${e.epsEstimate})` : ''
+        return `- ${e.symbol} [${e.hourLabel}]${eps}`
+      })
+      .join('\n')
+    return `\n\nWatchlist earnings today (Mag 7 + financials):\n${lines}`
+  } catch (earningsErr) {
+    console.error(
+      'Pre-market earnings fetch error (non-fatal):',
+      earningsErr instanceof Error ? earningsErr.message : earningsErr
+    )
+    return ''
+  }
+}
+
 /**
  * Generate the structured pre-market brief from a freeform context string.
  * Shared by the manual "Generate Brief" button and the morning auto-import.
@@ -127,8 +164,11 @@ export async function generatePreMarketBrief(
   context: string,
   clientHeadlines?: Headline[]
 ): Promise<PreMarketBrief | null> {
-  const newsSection = await buildNewsSection(clientHeadlines)
   const today = format(new Date(), 'yyyy-MM-dd')
+  const [newsSection, earningsSection] = await Promise.all([
+    buildNewsSection(clientHeadlines),
+    buildEarningsSection(today),
+  ])
   const macroSection = formatMacroSection(today)
 
   const message = await anthropic.messages.create({
@@ -138,7 +178,7 @@ export async function generatePreMarketBrief(
     messages: [
       {
         role: 'user',
-        content: `Today is ${today}. Here are my pre-market observations:\n\n${context}${newsSection}${macroSection}\n\nGenerate my pre-market brief.`,
+        content: `Today is ${today}. Here are my pre-market observations:\n\n${context}${newsSection}${macroSection}${earningsSection}\n\nGenerate my pre-market brief.`,
       },
     ],
   })
