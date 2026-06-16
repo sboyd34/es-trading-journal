@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { fetchPolygonNews } from '@/lib/polygon-news'
 import { fetchUpcomingEarnings } from '@/lib/finnhub-earnings'
 import { getMacroEventsForDate, hasSecondaryWindowConflict } from '@/lib/econ-calendar'
+import { formatEdgeStatsSection, type EdgeStat } from '@/lib/edge-stats'
 import { format } from 'date-fns'
 
 const anthropic = new Anthropic({
@@ -46,6 +47,7 @@ When generating the pre-market brief:
 - Flag any conditions that would put the trader in the dead zone or secondary window
 - If scheduled macro events are listed, fold them into the plan: elevate risk_level around HIGH-impact prints, and in what_not_to_do warn against fading the first impulse off an 07:30 CT release — let the NY ORB build finish before committing. If the list says the 12:30–14:00 secondary window is CLOSED (a macro event hits 12:00–14:30 CT, e.g. FOMC), say so explicitly in if_then_plan and what_not_to_do.
 - If watchlist earnings are listed, fold them in: a Mag 7 or large-cap BMO print can whip the cash open, so elevate risk_level and warn in what_not_to_do against committing to the NY ORB before the earnings reaction settles. An AMC print is afternoon and overnight risk — flag it for the 12:30–14:00 secondary window and caution against carrying size into the close.
+- If a personal edge table is provided, weave the rows matching today's bias into market_condition, day_type_expectation, and what_not_to_do. Treat a weak personal record on an approved setup as "demand A+ confluence / size down," never as a ban — the system's setup list still governs. Soften any row tagged [thin sample] to directional language; never quote a hard win rate off a thin sample.
 - What NOT to do must reference specific banned locations or banned behaviors from the system
 
 Keep each field concise — maximum 3 sentences per field except if_then_plan which can be 5 sentences. Be sharp and direct.
@@ -162,7 +164,8 @@ async function buildEarningsSection(today: string): Promise<string> {
  */
 export async function generatePreMarketBrief(
   context: string,
-  clientHeadlines?: Headline[]
+  clientHeadlines?: Headline[],
+  edgeStats?: EdgeStat[]
 ): Promise<PreMarketBrief | null> {
   const today = format(new Date(), 'yyyy-MM-dd')
   const [newsSection, earningsSection] = await Promise.all([
@@ -170,6 +173,7 @@ export async function generatePreMarketBrief(
     buildEarningsSection(today),
   ])
   const macroSection = formatMacroSection(today)
+  const edgeSection = formatEdgeStatsSection(edgeStats ?? [])
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
@@ -178,7 +182,7 @@ export async function generatePreMarketBrief(
     messages: [
       {
         role: 'user',
-        content: `Today is ${today}. Here are my pre-market observations:\n\n${context}${newsSection}${macroSection}${earningsSection}\n\nGenerate my pre-market brief.`,
+        content: `Today is ${today}. Here are my pre-market observations:\n\n${context}${newsSection}${macroSection}${earningsSection}${edgeSection}\n\nGenerate my pre-market brief.`,
       },
     ],
   })
