@@ -3,10 +3,31 @@
 import { useState, useEffect } from 'react'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { classifyWindow, WINDOW_LABEL, type WindowStatus } from '@/lib/trade-flags'
 
 interface Window {
   label: string
   color: 'green' | 'amber' | 'red' | 'gray'
+}
+
+// ORB windows are green (prime), builds + extended hours are amber (caution),
+// the NY lunch dead zone is red. Derived from the shared classifier so the live
+// banner can never drift from the journal/heatmap rules.
+const WINDOW_COLOR: Record<WindowStatus, Window['color']> = {
+  tokyo_orb: 'green',
+  shanghai_orb: 'green',
+  london_orb: 'green',
+  primary: 'green',
+  continuation: 'green',
+  late: 'amber',
+  secondary: 'amber',
+  eth: 'amber',
+  tokyo_build: 'amber',
+  shanghai_build: 'amber',
+  london_build: 'amber',
+  building: 'amber',
+  dead_zone: 'red',
+  unknown: 'gray',
 }
 
 function getCTMinutes(): number {
@@ -32,19 +53,11 @@ function getCTTimeString(): string {
 }
 
 function getWindow(totalMin: number, macroEventDetected = false): Window {
-  if (totalMin < 510) return { label: 'Pre-market. Prepare only.', color: 'gray' }
-  if (totalMin < 525) return { label: 'Building opening range. No trades.', color: 'amber' }
-  if (totalMin < 570) return { label: 'Primary ORB window.', color: 'green' }
-  if (totalMin < 630) return { label: 'Continuation window.', color: 'green' }
-  if (totalMin < 660) return { label: 'A+ setups only.', color: 'amber' }
-  if (totalMin < 750) return { label: 'Dead zone. No trades.', color: 'red' }
-  if (totalMin < 840) {
-    if (macroEventDetected) {
-      return { label: 'Macro event detected in secondary window — gate closed.', color: 'red' }
-    }
-    return { label: 'Secondary window — verify all three gates.', color: 'amber' }
+  const status = classifyWindow(totalMin)
+  if (status === 'secondary' && macroEventDetected) {
+    return { label: 'Macro event in NY secondary window — gate closed.', color: 'red' }
   }
-  return { label: 'Session closed.', color: 'red' }
+  return { label: WINDOW_LABEL[status], color: WINDOW_COLOR[status] }
 }
 
 const colorMap = {

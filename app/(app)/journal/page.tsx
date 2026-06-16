@@ -6,7 +6,7 @@ import { Trade } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { parseTradovateCSV } from '@/lib/tradovate-parser'
 import { formatCurrency, getMoodEmoji, getGradeColor, getPnLColor, cn } from '@/lib/utils'
-import { computeTradeFlags, classifyWindow, ctTimeLabel } from '@/lib/trade-flags'
+import { computeTradeFlags, classifyWindow, ctTimeLabel, isApprovedWindow } from '@/lib/trade-flags'
 import { Modal } from '@/components/ui/Modal'
 import TradeAnnotationForm from '@/components/journal/TradeAnnotationForm'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
@@ -538,7 +538,7 @@ export default function JournalPage() {
                         ? (() => { const [h, m] = ctLabel.split(':').map(Number); return h * 60 + m })()
                         : null
                       const windowStatus = ctMinsVal !== null ? classifyWindow(ctMinsVal) : 'unknown'
-                      const timeIsOk = windowStatus === 'primary' || windowStatus === 'continuation' || windowStatus === 'late' || windowStatus === 'secondary'
+                      const timeIsOk = isApprovedWindow(windowStatus)
 
                       return (
                       <tr

@@ -26,24 +26,39 @@ import {
 } from 'lucide-react'
 
 const WINDOW_LABELS: Record<string, string> = {
-  primary: '08:45–09:30 ORB',
-  continuation: '09:30–10:30 Continuation',
-  late: '10:30–11:00 A+ Only',
-  secondary: '12:30–14:00 Secondary',
-  building: '08:30–08:45 Building (banned)',
-  dead_zone: '11:00–12:30 Dead Zone (banned)',
-  closed: 'After 14:00 (closed)',
+  tokyo_orb: 'Tokyo ORB (19:15–20:00)',
+  shanghai_orb: 'Shanghai ORB (20:45–21:30)',
+  london_orb: 'London ORB (02:15–03:00)',
+  primary: 'NY ORB (08:45–09:30)',
+  continuation: 'NY Continuation (09:30–10:30)',
+  late: 'NY A+ Only (10:30–11:00)',
+  secondary: 'NY Secondary (12:30–14:00)',
+  eth: 'Extended Hours',
+  tokyo_build: 'Tokyo Build (19:00–19:15)',
+  shanghai_build: 'Shanghai Build (20:30–20:45)',
+  london_build: 'London Build (02:00–02:15)',
+  building: 'NY Build (08:30–08:45)',
+  dead_zone: 'NY Lunch Dead Zone (11:00–12:30)',
   unknown: 'Unknown',
 }
 
 const WINDOW_ORDER: string[] = [
+  // session ORBs first, for easy side-by-side comparison
+  'tokyo_orb',
+  'shanghai_orb',
+  'london_orb',
   'primary',
+  // other tradeable windows
   'continuation',
   'late',
   'secondary',
+  'eth',
+  // no-trade windows
+  'tokyo_build',
+  'shanghai_build',
+  'london_build',
   'building',
   'dead_zone',
-  'closed',
   'unknown',
 ]
 

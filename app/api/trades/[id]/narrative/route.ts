@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { Trade, PlaybookSetup } from '@/types'
-import { classifyWindow, ctTimeLabel } from '@/lib/trade-flags'
+import { classifyWindow, ctTimeLabel, isNoTradeWindow, WINDOW_LABEL } from '@/lib/trade-flags'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -89,7 +89,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       `Realized R: ${rMultiple !== null ? `${rMultiple.toFixed(2)}R` : '—'}`,
       `MAE: ${trade.mae !== null ? `${trade.mae.toFixed(2)} pts (max adverse)` : 'not recorded'}`,
       `MFE: ${trade.mfe !== null ? `${trade.mfe.toFixed(2)} pts (max favorable)` : 'not recorded'}`,
-      `Time window: ${windowStatus}${(['building','dead_zone','closed'] as const).includes(windowStatus as never) ? ' (BANNED window — should not have traded)' : ''}`,
+      `Time window: ${WINDOW_LABEL[windowStatus]}${isNoTradeWindow(windowStatus) ? ' (NO-TRADE window — range build or stand-down, should not have entered here)' : ''}`,
       `Setup tag: ${trade.setup_tag || 'untagged'}`,
       `1H bias recorded: ${trade.trade_bias || 'not recorded'}`,
       `Location: ${trade.trade_location || 'not recorded'}`,
@@ -112,8 +112,8 @@ TRADING SYSTEM RULES:
 Core Model: 1H Bias → 15m Setup → 5m Trigger
 - Bull bias → longs only; Bear bias → shorts only; Neutral → retests only or no trade
 
-Approved Time Windows (CT): 08:45–09:30 ORB primary; 09:30–10:30 continuation; 10:30–11:00 A+ only; 12:30–14:00 secondary (3 gates).
-BANNED Windows: 08:30–08:45 (OR building), 11:00–12:30 (dead zone), after 14:00 (closed).
+Approved Time Windows (CT) — ORB replays at each session open: Tokyo 19:15–20:00; Shanghai 20:45–21:30; London 02:15–03:00; NY 08:45–09:30 ORB primary → 09:30–10:30 continuation → 10:30–11:00 A+ only → 12:30–14:00 secondary (3 gates). All other extended-hours time is tradeable but secondary (thinner liquidity); the session ORBs and NY RTH are prime.
+NO-TRADE Windows: the 15-min OR build before each open (Tokyo 19:00–19:15, Shanghai 20:30–20:45, London 02:00–02:15, NY 08:30–08:45) and the NY lunch dead zone 11:00–12:30.
 
 Setup Priority: (1) ORB Break (2) TTM Squeeze (3) AVWAP Bounce (4) FVG Bounce (5) Divergence/Trendline Break (alert only).
 

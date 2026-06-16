@@ -40,14 +40,13 @@ Core Model: 1H Bias → 15m Setup → 5m Trigger
 - Bear bias: 1H close below 21 EMA, falling, not chopping → SHORTS ONLY
 - Neutral: repeated crossing, flat EMA, messy structure → retests only or no trade
 
-Approved Time Windows (CT):
-- 08:30–08:45: Building opening range ONLY — no trades
-- 08:45–09:30: ORB primary window
-- 09:30–10:30: Continuation, retests, clean squeezes only
-- 10:30–11:00: A+ continuation or retest only
-- 11:00–12:30: Dead zone — no trades
-- 12:30–14:00: Secondary window — only if: morning had clear directional move AND no macro events 12:00–14:30 AND 15m VWAP slope aligned with 1H bias
-- 14:00–15:15: Closing drive — valid if: clear directional momentum into close AND 1H bias confirmed AND not chasing exhausted move
+Approved Time Windows (CT) — ORB replays at EVERY session open; run the full Bias→Setup→Trigger→Location→Risk checklist at each:
+- Tokyo open: 19:00–19:15 build opening range (no trades) → 19:15–20:00 Tokyo ORB
+- Shanghai open: 20:30–20:45 build opening range (no trades) → 20:45–21:30 Shanghai ORB
+- London open: 02:00–02:15 build opening range (no trades) → 02:15–03:00 London ORB
+- NY cash open: 08:30–08:45 build opening range (no trades) → 08:45–09:30 NY ORB primary
+- NY continuation 09:30–10:30 (retests, clean squeezes); 10:30–11:00 A+ only; 11:00–12:30 lunch dead zone (no trades); 12:30–14:00 secondary (only if morning had clear directional move AND no macro events 12:00–14:30 AND 15m VWAP slope aligned with 1H bias)
+- All other extended-hours time is tradeable but SECONDARY: thinner liquidity, wider stops, more fakeouts — the session ORBs and NY RTH are prime. ORB applies to the session OPEN only; do NOT ORB the Tokyo (22:30) or Shanghai (00:00) lunch reopens.
 
 Setup Priority (trade in this order, do not skip):
 1. 15-minute ORB (Break → Retest → 5m confirmation → Enter; OR must be ≥30% of prior day ATR)

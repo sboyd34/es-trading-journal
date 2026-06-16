@@ -28,7 +28,7 @@ Core Model: 1H Bias → 15m Setup → 5m Trigger
 - Bear bias (1H close below 21 EMA, falling) → shorts only
 - Neutral (flat/crossing EMA) → retests only or no trade
 
-Approved Time Windows (CT): 08:30–08:45 range build only; 08:45–09:30 ORB primary; 09:30–10:30 continuation; 10:30–11:00 A+ only; 11:00–12:30 dead zone; 12:30–14:00 secondary (verify directional morning + no macro + VWAP aligned); after 14:00 closed.
+Approved Time Windows (CT) — ORB replays at each session open: Tokyo 19:00–19:15 build → 19:15–20:00 ORB; Shanghai 20:30–20:45 build → 20:45–21:30 ORB; London 02:00–02:15 build → 02:15–03:00 ORB; NY 08:30–08:45 build → 08:45–09:30 ORB primary → 09:30–10:30 continuation → 10:30–11:00 A+ only → 11:00–12:30 dead zone → 12:30–14:00 secondary (directional morning + no macro + VWAP aligned). All other extended-hours time is tradeable but secondary (thinner liquidity); the session ORBs and NY RTH are prime.
 
 Setup Priority: (1) ORB Break (2) TTM Squeeze pullback (3) AVWAP Bounce (4) FVG Bounce (5) Divergence/Trendline Break — alert only.
 

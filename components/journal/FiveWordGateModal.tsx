@@ -91,8 +91,11 @@ export default function FiveWordGateModal({ trade, trades = [], onComplete, onCa
     if (tier1.length >= 3) {
       const wins = tier1.filter((t) => t.net_pnl > 0).length
       const windowLabel: Record<string, string> = {
-        primary: '08:45–09:30', continuation: '09:30–10:30', late: '10:30–11:00',
-        secondary: '12:30–14:00', building: 'pre-ORB', dead_zone: 'dead zone', closed: 'after-hours',
+        tokyo_orb: 'Tokyo 19:15–20:00', shanghai_orb: 'Shanghai 20:45–21:30',
+        london_orb: 'London 02:15–03:00', primary: 'NY 08:45–09:30',
+        continuation: 'NY 09:30–10:30', late: 'NY 10:30–11:00', secondary: 'NY 12:30–14:00',
+        eth: 'extended hours', tokyo_build: 'Tokyo pre-ORB', shanghai_build: 'Shanghai pre-ORB',
+        london_build: 'London pre-ORB', building: 'NY pre-ORB', dead_zone: 'dead zone',
       }
       return {
         wins, total: tier1.length, tier: 'full',
