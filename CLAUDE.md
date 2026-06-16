@@ -54,7 +54,7 @@ P&L is computed via Postgres generated columns based on `trades.instrument`:
 - **Add features as tabs** in existing pages where possible, instead of creating new pages.
 - **No trailing summaries** in chat or commit bodies — keep it tight.
 - **Atomic commits**. One concern per commit. Title format: `<Area>: <imperative phrase>`. Body explains *why*, not *what*. Trailer: `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>`.
-- **No tests yet** — manual UI verification in the dev browser is the current QA model. `npx tsc --noEmit` is the gating check.
+- **No tests yet** — manual UI verification in the dev browser is the current QA model. **`npm run build` is the gating check before any push** — it runs lint + type-check + compile, exactly what Vercel runs. `npx tsc --noEmit` alone is *not* sufficient: it skips ESLint, so lint-only failures (`no-unused-vars`, `no-explicit-any`, hook deps) pass locally and then break the production deploy.
 
 ## Common commands
 
