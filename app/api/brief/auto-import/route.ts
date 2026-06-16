@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { format } from 'date-fns'
 import { generatePreMarketBrief } from '@/lib/pre-market-brief'
+import { computeEdgeStats } from '@/lib/edge-stats'
 
 function validateSecret(request: NextRequest): boolean {
   const expected = process.env.JOURNAL_AUTO_SECRET || ''
@@ -73,7 +74,12 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (!session?.pre_market_brief) {
-      const aiBrief = await generatePreMarketBrief(brief)
+      const { data: edgeTrades } = await supabase
+        .from('trades')
+        .select('trade_bias, trade_setup, setup_tag, net_pnl, entry_time')
+        .eq('user_id', userId)
+      const edgeStats = computeEdgeStats(edgeTrades ?? [])
+      const aiBrief = await generatePreMarketBrief(brief, undefined, edgeStats)
       if (aiBrief) {
         if (session) {
           await supabase

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { format } from 'date-fns'
 import { generatePreMarketBrief } from '@/lib/pre-market-brief'
+import { computeEdgeStats } from '@/lib/edge-stats'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +21,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'context is required' }, { status: 400 })
     }
 
-    const brief = await generatePreMarketBrief(context, clientHeadlines)
+    const { data: edgeTrades } = await supabase
+      .from('trades')
+      .select('trade_bias, trade_setup, setup_tag, net_pnl, entry_time')
+      .eq('user_id', user.id)
+    const edgeStats = computeEdgeStats(edgeTrades ?? [])
+
+    const brief = await generatePreMarketBrief(context, clientHeadlines, edgeStats)
     if (!brief) {
       return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
     }
