@@ -1,9 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
-import { POINT_VALUES } from './tradovate-parser'
+import { POINT_VALUES, feeForContracts } from './tradovate-parser'
 import type { ParsedTrade } from './tradovate-parser'
 
 const BASE_URL = 'https://live.tradovateapi.com/v1'
-const COMMISSION_PER_CONTRACT = 4.10
 
 // ── Encryption ───────────────────────────────────────────────────────────────
 
@@ -166,7 +165,7 @@ export async function fetchAndMatchTrades(token: string): Promise<ParsedTrade[]>
         top.qty -= qty
 
         const pnl = (top.side === 'long' ? fill.price - top.price : top.price - fill.price) * pointValue * qty
-        const commission = qty * COMMISSION_PER_CONTRACT
+        const commission = feeForContracts(instrument, qty)
 
         result.push({
           date,

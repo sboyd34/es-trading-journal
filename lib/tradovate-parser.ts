@@ -24,6 +24,27 @@ export const POINT_VALUES: Record<string, number> = {
   MNQ: 2,
 }
 
+// All-in round-turn fees per contract: broker commission + exchange + NFA + clearing.
+// Single source of truth for BOTH import paths (this CSV parser and the live API
+// sync in tradovate-api.ts) so the two can never diverge again — that divergence
+// (0.31/3.10 here vs a flat 4.10 there, all brokerage-only) is what made journal
+// net_pnl drift above Tradovate's true net. MES & NQ are reconciled from real
+// 2026-06-16 fills against Tradovate's reported net; ES & MNQ are best estimates —
+// verify against a Tradovate statement if your commission plan changes.
+export const ALLIN_FEE_PER_CONTRACT: Record<string, number> = {
+  ES: 4.10,
+  NQ: 3.47,
+  MES: 1.01,
+  MNQ: 1.04,
+}
+
+// Round-turn fee for a filled quantity, rounded to cents. Unmapped instruments
+// fall back to the ES rate (mirrors POINT_VALUES' ES-default convention).
+export function feeForContracts(instrument: string, qty: number): number {
+  const rate = ALLIN_FEE_PER_CONTRACT[instrument] ?? ALLIN_FEE_PER_CONTRACT.ES
+  return Math.round(qty * rate * 100) / 100
+}
+
 // Longer prefixes must come first (MES before ES, MNQ before NQ)
 const INSTRUMENT_PREFIXES = ['MES', 'MNQ', 'RTY', 'YM', 'NQ', 'ES', 'GC', 'CL']
 
@@ -114,9 +135,7 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
     const exitPrice  = direction === 'long' ? sellPrice : buyPrice
 
     const grossPnl = parsePnl(pnlRaw)
-    // ES: $3.10 round trip · MES: $0.31 round trip (brokerage-only plan)
-    const commissionRate = instrument === 'MES' ? 0.31 : 3.10
-    const commission = Math.round(qty * commissionRate * 100) / 100
+    const commission = feeForContracts(instrument, qty)
     const netPnl     = Math.round((grossPnl - commission) * 100) / 100
 
     trades.push({
