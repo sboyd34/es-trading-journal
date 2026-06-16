@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { fetchPolygonNews } from '@/lib/polygon-news'
+import { getMacroEventsForDate, hasSecondaryWindowConflict } from '@/lib/econ-calendar'
 import { format } from 'date-fns'
 
 const anthropic = new Anthropic({
@@ -42,6 +43,7 @@ When generating the pre-market brief:
 - Name which of the 5 setups to watch for given today's conditions
 - Build if/then scenarios using the Break→Retest→Confirm→Enter sequence
 - Flag any conditions that would put the trader in the dead zone or secondary window
+- If scheduled macro events are listed, fold them into the plan: elevate risk_level around HIGH-impact prints, and in what_not_to_do warn against fading the first impulse off an 07:30 CT release — let the NY ORB build finish before committing. If the list says the 12:30–14:00 secondary window is CLOSED (a macro event hits 12:00–14:30 CT, e.g. FOMC), say so explicitly in if_then_plan and what_not_to_do.
 - What NOT to do must reference specific banned locations or banned behaviors from the system
 
 Keep each field concise — maximum 3 sentences per field except if_then_plan which can be 5 sentences. Be sharp and direct.
@@ -99,6 +101,23 @@ async function buildNewsSection(clientHeadlines?: Headline[]): Promise<string> {
   return ''
 }
 
+// Today's scheduled high-impact federal macro events, formatted for the prompt.
+// Always emitted (even when empty) so Claude knows the calendar was checked and
+// can state "no scheduled macro" rather than guessing.
+function formatMacroSection(today: string): string {
+  const events = getMacroEventsForDate(today)
+  if (events.length === 0) {
+    return '\n\nScheduled US macro events today: none on the federal calendar.'
+  }
+  const lines = events
+    .map((e) => `- ${e.ctTime} CT [${e.impact}] ${e.name}`)
+    .join('\n')
+  const gate = hasSecondaryWindowConflict(today)
+    ? '\nA macro event falls in 12:00–14:30 CT — the 12:30–14:00 NY secondary window gate is CLOSED today.'
+    : ''
+  return `\n\nScheduled US macro events today (America/Chicago):\n${lines}${gate}`
+}
+
 /**
  * Generate the structured pre-market brief from a freeform context string.
  * Shared by the manual "Generate Brief" button and the morning auto-import.
@@ -110,6 +129,7 @@ export async function generatePreMarketBrief(
 ): Promise<PreMarketBrief | null> {
   const newsSection = await buildNewsSection(clientHeadlines)
   const today = format(new Date(), 'yyyy-MM-dd')
+  const macroSection = formatMacroSection(today)
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
@@ -118,7 +138,7 @@ export async function generatePreMarketBrief(
     messages: [
       {
         role: 'user',
-        content: `Today is ${today}. Here are my pre-market observations:\n\n${context}${newsSection}\n\nGenerate my pre-market brief.`,
+        content: `Today is ${today}. Here are my pre-market observations:\n\n${context}${newsSection}${macroSection}\n\nGenerate my pre-market brief.`,
       },
     ],
   })
