@@ -194,7 +194,15 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
       toast.success('Scorecard saved')
     } catch (err) {
       console.error('Save error:', err)
-      toast.error('Failed to save scorecard')
+      // Surface the real Postgres/auth error instead of swallowing it — a generic
+      // "Failed to save" gave no diagnostic signal. Solo tool: showing code+message
+      // in the toast is pure upside.
+      const e = err as { message?: string; code?: string }
+      toast.error(
+        e.code || e.message
+          ? `Save failed${e.code ? ` [${e.code}]` : ''}: ${e.message ?? 'unknown error'}`
+          : 'Failed to save scorecard'
+      )
     } finally {
       setSaving(false)
     }
