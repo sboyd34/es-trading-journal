@@ -135,6 +135,16 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate])
 
+  // Reconcile selectedDate once real dates are available. useState's initializer
+  // runs only on first mount — if trades were still loading then (empty array),
+  // selectedDate froze as '' and never recovered, so Save shipped date:'' → 22007.
+  useEffect(() => {
+    if (tradingDates.length === 0) return
+    if (!selectedDate || !tradingDates.includes(selectedDate)) {
+      setSelectedDate(defaultDate ?? tradingDates[tradingDates.length - 1])
+    }
+  }, [tradingDates, defaultDate, selectedDate])
+
   if (trades.length === 0) return null
 
   const goPrev = () => { if (currentIdx > 0) setSelectedDate(tradingDates[currentIdx - 1]) }
@@ -163,6 +173,7 @@ export default function EodScorecard({ trades, defaultDate }: Props) {
   }
 
   async function handleSave() {
+    if (!selectedDate) { toast.error('No date selected yet — try again in a moment'); return }
     setSaving(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
