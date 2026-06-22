@@ -4,6 +4,7 @@ export const SYSTEM_SETUPS = [
   'TTM Squeeze',
   'AVWAP Bounce',
   'FVG Bounce',
+  'VAH/VAL Bounce',
   'Divergence/Trendline Break',
   'FireLines Level',
   'No Setup',
@@ -53,7 +54,8 @@ Setup Priority (trade in this order, do not skip):
 2. TTM Squeeze fire/pullback continuation (Tier 1 locations default; Tier 2 requires extra confirmation candle)
 3. AVWAP Bounce (requires 1H bias + price respecting AVWAP + 5m confirmation + room to target)
 4. FVG Bounce (location tool with confluence; must align with 1H bias + real trigger)
-5. Divergence/Trendline Break (alert only, never standalone — must appear at meaningful level with 5m trigger)
+5. VAH/VAL Bounce (volume-profile boundary; requires 1H bias + confluence + 5m trigger + room to POC or opposite VA — never trade the VAH/VAL alone)
+6. Divergence/Trendline Break (alert only, never standalone — must appear at meaningful level with 5m trigger)
 
 Entry Rule (must follow ALL steps): Break → Retest → Confirm → Enter
 BANNED entries: anticipation, blind-touch, chasing, entering on bubble/fire alone
@@ -64,7 +66,7 @@ Banned Locations: POC, mid-value, overlapping candles, obvious chop, signals fir
 
 Hard Operating Rule — must confirm ALL FIVE before every trade:
 1. Bias — 1H direction clear and aligned?
-2. Setup — which of the 5 setups is this?
+2. Setup — which of the 6 setups is this?
 3. Trigger — exact 5m signal?
 4. Location — approved location with room to target?
 5. Risk — stop and target defined?
@@ -114,6 +116,13 @@ export const PLAYBOOK_SETUPS = [
     entry_criteria: '1. Identify a clear FVG (3-candle pattern, visible gap in price).\n2. Must align with 1H bias direction.\n3. Wait for price to fill the FVG and show rejection.\n4. Real 5m trigger required — hold candle or rejection close.\n5. Must have additional confluence (VWAP, AVWAP, swing level) and room to target.',
     exit_criteria: 'Target prior swing high/low or the next key structure. Exit if price fills the entire FVG and continues through.',
     tags: ['fvg', 'gap', 'location'],
+  },
+  {
+    name: 'VAH/VAL Bounce',
+    description: 'Value Area High/Low rejection or reclaim. Volume-profile-derived support/resistance — never traded alone.',
+    entry_criteria: '1. 1H bias must be clear and aligned with the trade direction.\n2. Identify prior session VAH or VAL — current price approaches from inside (boundary holds) or from outside (rejection back into value).\n3. 5m confirmation: rejection wick, hold candle, or reclaim of the level.\n4. Must have confluence (AVWAP, FireLines, prior swing, etc.) — never the VAH/VAL alone.\n5. Clear room to target — at minimum POC or the opposite VA boundary in the trade direction.',
+    exit_criteria: 'Target POC (mean reversion), opposite VA boundary, or prior swing. Scale at 1R. Exit if 5m closes decisively through the VAH/VAL level.',
+    tags: ['value-area', 'bounce', 'volume-profile'],
   },
   {
     name: 'Divergence/Trendline Break',

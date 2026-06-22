@@ -49,7 +49,7 @@ const STEPS: PlaybookStep[] = [
     icon: <ListChecks className="h-4 w-4" />,
     title: 'Run the checklist',
     detail:
-      'A+ only satisfies "approved location" + direction. You still owe the rest: does it map to one of the 5 setups, is 1H bias aligned (the chip is single-timeframe), and are you inside a valid time window?',
+      'A+ only satisfies "approved location" + direction. You still owe the rest: does it map to one of the 6 setups, is 1H bias aligned (the chip is single-timeframe), and are you inside a valid time window?',
   },
   {
     n: 3,
@@ -149,7 +149,7 @@ export default function APlusPlaybookCard() {
       {/* Setup-match reminder — A+ must resolve to one of these */}
       <div className="rounded-lg border border-gray-700/50 bg-gray-900/40 p-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
-          Step 2 — A+ must resolve to one of your 5 setups
+          Step 2 — A+ must resolve to one of your 6 setups
         </p>
         <div className="flex flex-wrap gap-2">
           {SYSTEM_SETUPS.map((setup) => (

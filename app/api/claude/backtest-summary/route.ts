@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       max_tokens: 1024,
       system: `You are an expert ES futures trading coach analyzing the gap between a trader's backtesting results and live trading performance.
 
-The trader uses this system: 1H Bias → 15m Setup → 5m Trigger. Entry rule: Break→Retest→Confirm→Enter. Five setups in priority order: ORB Break, TTM Squeeze, AVWAP Bounce, FVG Bounce, Divergence/Trendline Break.
+The trader uses this system: 1H Bias → 15m Setup → 5m Trigger. Entry rule: Break→Retest→Confirm→Enter. Six setups in priority order: ORB Break, TTM Squeeze, AVWAP Bounce, FVG Bounce, VAH/VAL Bounce, Divergence/Trendline Break.
 
 Common reasons for backtest→live performance gaps:
 - Execution hesitation (seeing the setup but not pulling the trigger)

@@ -48,6 +48,7 @@ function matchSetup(trade: Trade): string {
   if (raw.includes('ttm') || raw.includes('squeeze')) return 'TTM Squeeze'
   if (raw.includes('avwap') || (raw.includes('vwap') && raw.includes('bounce'))) return 'AVWAP Bounce'
   if (raw.includes('fvg') || raw.includes('fair value')) return 'FVG Bounce'
+  if (raw.includes('vah') || raw.includes('val ') || raw.includes('value area')) return 'VAH/VAL Bounce'
   if (raw.includes('divergence') || raw.includes('trendline')) return 'Divergence/TB'
   return 'Other'
 }

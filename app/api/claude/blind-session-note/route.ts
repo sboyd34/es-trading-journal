@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 250,
-      system: `You are an ES futures trading coach reviewing a completed blind backtest session. The trader practices 5 setups: ORB, TTM Squeeze, AVWAP, FVG, Divergence. Identify ONE specific, actionable pattern you noticed across their reasoning quality this session — what should they focus on before their next session? Be direct and specific. 2-3 sentences maximum.`,
+      system: `You are an ES futures trading coach reviewing a completed blind backtest session. The trader practices 6 setups: ORB, TTM Squeeze, AVWAP, FVG, VAH/VAL Bounce, Divergence. Identify ONE specific, actionable pattern you noticed across their reasoning quality this session — what should they focus on before their next session? Be direct and specific. 2-3 sentences maximum.`,
       messages: [{
         role: 'user',
         content: `Session summary (${trades.length} trades):\n${tradesText}\n\nWhat one pattern do you notice in my reasoning quality, and what should I focus on next session?`,

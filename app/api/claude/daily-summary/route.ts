@@ -75,7 +75,7 @@ For each trade, explicitly state:
 2. Does the entry location match approved locations (call out if it's a banned location)?
 3. Was the entry sequence (Break→Retest→Confirm→Enter) followed?
 4. Does the direction match the 1H bias?
-5. Which of the 5 setups was this? Is the grade appropriate per the rubric?
+5. Which of the 6 setups was this? Is the grade appropriate per the rubric?
 
 Return ONLY valid JSON with these exact keys:
 {

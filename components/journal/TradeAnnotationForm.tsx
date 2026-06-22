@@ -365,7 +365,7 @@ export default function TradeAnnotationForm({
           <div className="flex-1">
             <p className="text-sm font-medium text-gray-200">Off-system trade (F)</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Use when the trade wasn&apos;t one of the 5 setups — a discipline lapse, not a graded execution.
+              Use when the trade wasn&apos;t one of the 6 setups — a discipline lapse, not a graded execution.
             </p>
           </div>
         </label>

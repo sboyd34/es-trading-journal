@@ -113,6 +113,7 @@ function matchSetupName(trade: Trade): string | null {
   if (raw.includes('ttm') || raw.includes('squeeze')) return 'TTM Squeeze'
   if (raw.includes('avwap') || (raw.includes('vwap') && raw.includes('bounce'))) return 'AVWAP Bounce'
   if (raw.includes('fvg') || raw.includes('fair value')) return 'FVG Bounce'
+  if (raw.includes('vah') || raw.includes('val ') || raw.includes('value area')) return 'VAH/VAL Bounce'
   if (raw.includes('divergence') || raw.includes('trendline')) return 'Divergence/TB'
   return null
 }
@@ -484,7 +485,7 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
 
   // ── Setup Performance Matrix ──────────────────────────────────────────────
   const setupMatrixData = useMemo(() => {
-    const SETUP_KEYS = ['ORB Break', 'TTM Squeeze', 'AVWAP Bounce', 'FVG Bounce', 'Divergence/TB'] as const
+    const SETUP_KEYS = ['ORB Break', 'TTM Squeeze', 'AVWAP Bounce', 'FVG Bounce', 'VAH/VAL Bounce', 'Divergence/TB'] as const
     const TIME_COLS = ['Primary', 'Contd.', 'Late', 'Secondary', 'Other'] as const
     const DAY_COLS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
     const BIAS_COLS = ['Bull', 'Bear', 'Neutral', '—'] as const
@@ -581,7 +582,7 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
   // ── Location Performance ──────────────────────────────────────────────────
   const locationData = useMemo(() => {
     const LOC_KEYS = ['ORH/ORL', 'VWAP/AVWAP', 'VAH/VAL', 'PDH/PDL', 'Overnight Hi/Lo', 'Prior Swing', 'Supply/Demand', 'Other', 'None/Untagged'] as const
-    const SETUP_KEYS = ['ORB Break', 'TTM Squeeze', 'AVWAP Bounce', 'FVG Bounce', 'Divergence/TB'] as const
+    const SETUP_KEYS = ['ORB Break', 'TTM Squeeze', 'AVWAP Bounce', 'FVG Bounce', 'VAH/VAL Bounce', 'Divergence/TB'] as const
 
     type Cell = { n: number; wins: number; pnl: number; grossW: number; grossL: number }
     const mk = (): Cell => ({ n: 0, wins: 0, pnl: 0, grossW: 0, grossL: 0 })

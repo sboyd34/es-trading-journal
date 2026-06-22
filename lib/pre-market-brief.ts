@@ -42,7 +42,7 @@ Hard Operating Rule: Before every trade — Bias. Setup. Trigger. Location. Risk
 
 When generating the pre-market brief:
 - Identify the 1H bias direction explicitly (Bull/Bear/Neutral) and why
-- Name which of the 5 setups to watch for given today's conditions
+- Name which of the 6 setups to watch for given today's conditions
 - Build if/then scenarios using the Break→Retest→Confirm→Enter sequence
 - Flag any conditions that would put the trader in the dead zone or secondary window
 - If scheduled macro events are listed, fold them into the plan: elevate risk_level around HIGH-impact prints, and in what_not_to_do warn against fading the first impulse off an 07:30 CT release — let the NY ORB build finish before committing. If the list says the 12:30–14:00 secondary window is CLOSED (a macro event hits 12:00–14:30 CT, e.g. FOMC), say so explicitly in if_then_plan and what_not_to_do.
