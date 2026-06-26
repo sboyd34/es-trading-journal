@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { format } from 'date-fns'
 import { generatePreMarketBrief } from '@/lib/pre-market-brief'
 import { computeEdgeStats } from '@/lib/edge-stats'
+import { computePriorSession } from '@/lib/prior-session'
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,8 +27,9 @@ export async function POST(request: NextRequest) {
       .select('trade_bias, trade_setup, setup_tag, net_pnl, entry_time')
       .eq('user_id', user.id)
     const edgeStats = computeEdgeStats(edgeTrades ?? [])
+    const priorSession = computePriorSession(edgeTrades ?? [])
 
-    const brief = await generatePreMarketBrief(context, clientHeadlines, edgeStats)
+    const brief = await generatePreMarketBrief(context, clientHeadlines, edgeStats, priorSession)
     if (!brief) {
       return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
     }

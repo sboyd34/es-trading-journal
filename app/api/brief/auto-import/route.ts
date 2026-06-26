@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { format } from 'date-fns'
 import { generatePreMarketBrief } from '@/lib/pre-market-brief'
 import { computeEdgeStats } from '@/lib/edge-stats'
+import { computePriorSession } from '@/lib/prior-session'
 
 function validateSecret(request: NextRequest): boolean {
   const expected = process.env.JOURNAL_AUTO_SECRET || ''
@@ -79,7 +80,8 @@ export async function POST(request: NextRequest) {
         .select('trade_bias, trade_setup, setup_tag, net_pnl, entry_time')
         .eq('user_id', userId)
       const edgeStats = computeEdgeStats(edgeTrades ?? [])
-      const aiBrief = await generatePreMarketBrief(brief, undefined, edgeStats)
+      const priorSession = computePriorSession(edgeTrades ?? [])
+      const aiBrief = await generatePreMarketBrief(brief, undefined, edgeStats, priorSession)
       if (aiBrief) {
         if (session) {
           await supabase
