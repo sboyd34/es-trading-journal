@@ -1,0 +1,86 @@
+import { matchFillsFlatToFlat, type MatchFill } from '../lib/tradovate-api'
+
+let failures = 0
+function check(label: string, actual: unknown, expected: unknown) {
+  const a = JSON.stringify(actual)
+  const e = JSON.stringify(expected)
+  if (a === e) {
+    console.log(`PASS  ${label}`)
+  } else {
+    failures++
+    console.log(`FAIL  ${label}\n  expected ${e}\n  actual   ${a}`)
+  }
+}
+
+const base = { contractName: 'ESM6', instrument: 'ES', date: '2026-06-16', accountId: 1 }
+const ts = (s: string) => `2026-06-16T${s}Z`
+
+// Scenario 1 — bracket entry fills in 2 pieces, exits once → ONE row.
+{
+  const fills: MatchFill[] = [
+    { ...base, id: 1, action: 'Buy', qty: 2, price: 5000, timestamp: ts('14:30:00') },
+    { ...base, id: 2, action: 'Buy', qty: 1, price: 5001, timestamp: ts('14:30:01') },
+    { ...base, id: 3, action: 'Sell', qty: 3, price: 5010, timestamp: ts('14:35:00') },
+  ]
+  const feeMap = new Map<number, number>([[1, 2.0], [2, 1.0], [3, 3.0]])
+  const t = matchFillsFlatToFlat(fills, feeMap)
+  check('S1 count', t.length, 1)
+  check('S1 qty', t[0].quantity, 3)
+  check('S1 direction', t[0].direction, 'long')
+  check('S1 entry_price', Math.round(t[0].entry_price * 1000) / 1000, 5000.333)
+  check('S1 exit_price', t[0].exit_price, 5010)
+  check('S1 commission (real sum)', t[0].commission, 6.0)
+  check('S1 dedup key', t[0].tradovate_order_id, '1_3')
+}
+
+// Scenario 2 — one entry, two scale-out exits → ONE row, blended exit.
+{
+  const fills: MatchFill[] = [
+    { ...base, id: 10, action: 'Buy', qty: 3, price: 5000, timestamp: ts('14:30:00') },
+    { ...base, id: 11, action: 'Sell', qty: 2, price: 5010, timestamp: ts('14:35:00') },
+    { ...base, id: 12, action: 'Sell', qty: 1, price: 5008, timestamp: ts('14:36:00') },
+  ]
+  const feeMap = new Map<number, number>([[10, 3.0], [11, 2.0], [12, 1.0]])
+  const t = matchFillsFlatToFlat(fills, feeMap)
+  check('S2 count', t.length, 1)
+  check('S2 qty', t[0].quantity, 3)
+  check('S2 exit_price', Math.round(t[0].exit_price * 1000) / 1000, 5009.333)
+  check('S2 commission', t[0].commission, 6.0)
+  check('S2 dedup key', t[0].tradovate_order_id, '10_12')
+}
+
+// Scenario 3 — flip through zero: Sell 3 while long 2 → close long(2) + open short(1).
+{
+  const fills: MatchFill[] = [
+    { ...base, id: 20, action: 'Buy', qty: 2, price: 5000, timestamp: ts('14:30:00') },
+    { ...base, id: 21, action: 'Sell', qty: 3, price: 5010, timestamp: ts('14:35:00') },
+    { ...base, id: 22, action: 'Buy', qty: 1, price: 5005, timestamp: ts('14:40:00') },
+  ]
+  // id21 fee 3.0 over qty 3 → 1.0/contract: 2.0 to the long close, 1.0 to the short open.
+  const feeMap = new Map<number, number>([[20, 2.0], [21, 3.0], [22, 1.0]])
+  const t = matchFillsFlatToFlat(fills, feeMap)
+  check('S3 count', t.length, 2)
+  check('S3 t1 direction', t[0].direction, 'long')
+  check('S3 t1 qty', t[0].quantity, 2)
+  check('S3 t1 commission', t[0].commission, 4.0) // 2.0 (id20) + 2.0 (2/3 of id21)
+  check('S3 t1 key', t[0].tradovate_order_id, '20_21')
+  check('S3 t2 direction', t[1].direction, 'short')
+  check('S3 t2 qty', t[1].quantity, 1)
+  check('S3 t2 commission', t[1].commission, 2.0) // 1.0 (1/3 of id21) + 1.0 (id22)
+  check('S3 t2 key', t[1].tradovate_order_id, '21_22')
+}
+
+// Scenario 4 — missing real fee → fall back to ES round-turn estimate (4.10).
+{
+  const fills: MatchFill[] = [
+    { ...base, id: 30, action: 'Buy', qty: 1, price: 5000, timestamp: ts('14:30:00') },
+    { ...base, id: 31, action: 'Sell', qty: 1, price: 5010, timestamp: ts('14:35:00') },
+  ]
+  const feeMap = new Map<number, number>([[30, 2.05]]) // id31 missing
+  const t = matchFillsFlatToFlat(fills, feeMap)
+  check('S4 count', t.length, 1)
+  check('S4 commission (estimate)', t[0].commission, 4.1)
+}
+
+console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`)
+process.exit(failures === 0 ? 0 : 1)
