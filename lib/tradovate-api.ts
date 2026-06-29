@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
-import { POINT_VALUES, feeForContracts } from './tradovate-parser'
-import type { ParsedTrade } from './tradovate-parser'
+import { POINT_VALUES, matchFillsFlatToFlat } from './tradovate-parser'
+import type { ParsedTrade, MatchFill } from './tradovate-parser'
 
 const BASE_URL = 'https://live.tradovateapi.com/v1'
 
@@ -114,15 +114,15 @@ function allInFee(f: FillFee): number {
 
 // Map of fillId → all-in fee. Best-effort: any failure returns an empty map and
 // the matcher falls back to ALLIN_FEE_PER_CONTRACT estimates per fill.
-async function fetchFillFees(token: string): Promise<Map<number, number>> {
-  const map = new Map<number, number>()
+async function fetchFillFees(token: string): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
   try {
     const res = await fetch(`${BASE_URL}/fillFee/list`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) return map
     const fees: FillFee[] = await res.json()
-    for (const fee of fees) map.set(fee.id, allInFee(fee))
+    for (const fee of fees) map.set(String(fee.id), allInFee(fee))
   } catch {
     // best-effort — estimates fill the gap
   }
@@ -155,144 +155,6 @@ function extractInstrument(name: string): string {
   return 'ES'
 }
 
-export interface MatchFill {
-  id: number
-  action: 'Buy' | 'Sell'
-  qty: number
-  price: number
-  timestamp: string
-  accountId?: number
-  contractName: string
-  instrument: string
-  date: string
-}
-
-// Flat-to-flat matcher. Within each (account, contract, date) bucket, walk fills
-// in time order tracking signed net position. Every time the position returns to
-// flat, emit exactly one round-turn trade — so a bracket order that fills in N
-// pieces and exits in M pieces becomes a single journal row. A fill that
-// overshoots flat (a position flip) is split: the portion that reaches flat
-// closes the current trade, the remainder opens the next one. Commission is the
-// summed real per-fill fee for every fill portion in the lifecycle; if any fill
-// lacks a real fee, the whole trade falls back to the round-turn estimate.
-export function matchFillsFlatToFlat(
-  fills: MatchFill[],
-  feeMap: Map<number, number>,
-): ParsedTrade[] {
-  const groups = new Map<string, MatchFill[]>()
-  for (const f of fills) {
-    const accountKey = f.accountId != null ? String(f.accountId) : 'unknown'
-    const key = `${accountKey}_${f.contractName}_${f.date}`
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(f)
-  }
-
-  const result: ParsedTrade[] = []
-
-  for (const group of Array.from(groups.values())) {
-    group.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-
-    const { instrument, date } = group[0]
-    const brokerAccountId = group[0].accountId != null ? String(group[0].accountId) : null
-    const pointValue = POINT_VALUES[instrument] ?? 50
-
-    let pos = 0
-    let side: 'long' | 'short' | null = null
-    let entryQty = 0
-    let entryNotional = 0
-    let exitQty = 0
-    let exitNotional = 0
-    let feeAccum = 0
-    let feesAllReal = true
-    let firstFillId = 0
-    let lastFillId = 0
-    let entryTime = ''
-    let exitTime = ''
-
-    const reset = () => {
-      side = null
-      entryQty = 0
-      entryNotional = 0
-      exitQty = 0
-      exitNotional = 0
-      feeAccum = 0
-      feesAllReal = true
-      firstFillId = 0
-      lastFillId = 0
-      entryTime = ''
-      exitTime = ''
-    }
-
-    const emit = () => {
-      const qty = entryQty
-      const entryPrice = entryNotional / entryQty
-      const exitPrice = exitNotional / exitQty
-      const pnl =
-        (side === 'long' ? exitPrice - entryPrice : entryPrice - exitPrice) * pointValue * qty
-      const commission = feesAllReal ? feeAccum : feeForContracts(instrument, qty)
-      result.push({
-        date,
-        entry_time: new Date(entryTime).toISOString(),
-        exit_time: new Date(exitTime).toISOString(),
-        direction: side as 'long' | 'short',
-        quantity: qty,
-        entry_price: entryPrice,
-        exit_price: exitPrice,
-        gross_pnl: Math.round(pnl * 100) / 100,
-        commission: Math.round(commission * 100) / 100,
-        net_pnl: Math.round((pnl - commission) * 100) / 100,
-        tradovate_order_id: `${firstFillId}_${lastFillId}`,
-        instrument,
-        pnl_raw: '',
-        broker_account_id: brokerAccountId,
-      })
-    }
-
-    for (const fill of group) {
-      const signed = fill.action === 'Buy' ? 1 : -1
-      const perUnitFee = feeMap.has(fill.id) ? feeMap.get(fill.id)! / fill.qty : null
-      let q = fill.qty
-
-      while (q > 0) {
-        if (side === null) {
-          side = signed > 0 ? 'long' : 'short'
-          firstFillId = fill.id
-          entryTime = fill.timestamp
-        }
-        const dir = side === 'long' ? 1 : -1
-
-        if (signed === dir) {
-          // adding to the position → entry side
-          entryQty += q
-          entryNotional += q * fill.price
-          pos += signed * q
-          if (perUnitFee === null) feesAllReal = false
-          else feeAccum += perUnitFee * q
-          q = 0
-        } else {
-          // reducing the position → exit side
-          const take = Math.min(q, Math.abs(pos))
-          exitQty += take
-          exitNotional += take * fill.price
-          pos += signed * take
-          if (perUnitFee === null) feesAllReal = false
-          else feeAccum += perUnitFee * take
-          lastFillId = fill.id
-          exitTime = fill.timestamp
-          q -= take
-          if (pos === 0) {
-            emit()
-            reset()
-          }
-        }
-      }
-    }
-  }
-
-  result.sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime())
-  return result
-}
-
 export async function fetchAndMatchTrades(token: string): Promise<ParsedTrade[]> {
   const res = await fetch(`${BASE_URL}/fill/list`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -317,12 +179,12 @@ export async function fetchAndMatchTrades(token: string): Promise<ParsedTrade[]>
     const td = fill.tradeDate
     const date = `${td.year}-${String(td.month).padStart(2, '0')}-${String(td.day).padStart(2, '0')}`
     matchFills.push({
-      id: fill.id,
+      id: String(fill.id),
       action: fill.action,
       qty: fill.qty,
       price: fill.price,
       timestamp: fill.timestamp,
-      accountId: fill.accountId,
+      accountId: fill.accountId != null ? String(fill.accountId) : undefined,
       contractName,
       instrument,
       date,
