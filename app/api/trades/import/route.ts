@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     const ALL_IN_RATES: Record<string, number> = {
       ES: 3.10,
-      MES: 0.31,
+      MES: 1.04,
     }
 
     // Resolve broker_account_id → apex_accounts.id once
