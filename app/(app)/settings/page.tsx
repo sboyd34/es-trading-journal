@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { RiskRules, ChecklistItem, Trade } from '@/types'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, GripVertical, Download, Search, Bell, BellOff, RotateCcw, Wifi, WifiOff, RefreshCw, Unplug } from 'lucide-react'
+import { Plus, Trash2, GripVertical, Download, Search, Bell, BellOff, RotateCcw, Wifi, WifiOff, RefreshCw, Unplug, Activity } from 'lucide-react'
+import { runExcursionEnrichment, type EnrichProgress } from '@/lib/enrich-excursions-client'
 import { STORAGE_KEY as NOTIF_KEY } from '@/components/dashboard/SessionCloseNotifier'
 import { format, parseISO } from 'date-fns'
 import { SYSTEM_CHECKLIST_ITEMS } from '@/lib/trading-system'
@@ -31,6 +32,10 @@ export default function SettingsPage() {
   const [postLossDay, setPostLossDay] = useState(false)
   const [accountType, setAccountType] = useState<'Evaluation' | 'PA' | null>(null)
   const [resetingChecklist, setResetingChecklist] = useState(false)
+
+  // Excursion backfill state
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillProgress, setBackfillProgress] = useState<EnrichProgress | null>(null)
 
   // Broker sync state
   type SyncStatus = { connected: boolean; username?: string; lastSync?: string | null; syncEnabled?: boolean }
@@ -224,6 +229,34 @@ export default function SettingsPage() {
 
   function handleExportCSV() {
     window.open('/api/export/csv', '_blank')
+  }
+
+  // Excursion coverage counts across all loaded trades.
+  const excursionCounts = useMemo(() => {
+    let pending = 0, complete = 0, skipped = 0
+    for (const t of allTrades) {
+      const s = t.excursion_status
+      if (s === 'complete') complete++
+      else if (s === 'no_data' || s === 'failed') skipped++
+      else pending++ // pending or null
+    }
+    return { pending, complete, skipped, total: allTrades.length }
+  }, [allTrades])
+
+  async function handleBackfillExcursions() {
+    setBackfilling(true)
+    setBackfillProgress(null)
+    try {
+      const totals = await runExcursionEnrichment({
+        onProgress: (p) => setBackfillProgress(p),
+      })
+      toast.success(`Backfill complete — ${totals.complete} enriched, ${totals.no_data} skipped, ${totals.failed} failed`)
+      loadData()
+    } catch {
+      toast.error('Backfill failed')
+    } finally {
+      setBackfilling(false)
+    }
   }
 
   // Live search
@@ -597,6 +630,49 @@ export default function SettingsPage() {
             <><Bell className="h-4 w-4" /> Enable 3:15 PM Reminder</>
           )}
         </button>
+      </section>
+
+      {/* Excursion Backfill */}
+      <section className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
+        <h2 className="text-base font-semibold text-white mb-1">MAE/MFE Excursions</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Pulls Polygon 1-minute bars to compute Max Adverse / Favorable Excursion (in ticks) for ES &amp; MES trades.
+          Runs automatically on import; use this to backfill older trades. NQ/MNQ are skipped.
+        </p>
+
+        <div className="grid grid-cols-3 gap-3 text-xs mb-4">
+          <div className="bg-gray-800 rounded-lg p-3">
+            <p className="text-gray-500 mb-0.5">Enriched</p>
+            <p className="text-emerald-400 font-semibold text-base">{excursionCounts.complete}</p>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-3">
+            <p className="text-gray-500 mb-0.5">Pending</p>
+            <p className="text-amber-400 font-semibold text-base">{excursionCounts.pending}</p>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-3">
+            <p className="text-gray-500 mb-0.5">Skipped</p>
+            <p className="text-gray-400 font-semibold text-base">{excursionCounts.skipped}</p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleBackfillExcursions}
+          disabled={backfilling || excursionCounts.pending === 0}
+          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
+        >
+          <Activity className={cn('h-4 w-4', backfilling && 'animate-pulse')} />
+          {backfilling
+            ? 'Backfilling…'
+            : excursionCounts.pending === 0
+              ? 'All caught up'
+              : `Backfill ${excursionCounts.pending} trades`}
+        </button>
+
+        {backfilling && backfillProgress && (
+          <p className="text-xs text-gray-400 mt-3">
+            {backfillProgress.complete} enriched · {backfillProgress.no_data} skipped · {backfillProgress.failed} failed · {backfillProgress.remaining} remaining
+          </p>
+        )}
       </section>
 
       {/* Export */}

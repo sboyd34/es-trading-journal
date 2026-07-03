@@ -32,6 +32,11 @@ export interface Trade {
   setup_tag: string | null
   mae: number | null
   mfe: number | null
+  mae_ticks: number | null
+  mfe_ticks: number | null
+  excursion_source: 'polygon_1min' | 'polygon_1min_edgebar' | null
+  loss_type: 'straight_loss' | 'reversal_loss' | null
+  excursion_status: 'pending' | 'complete' | 'failed' | 'no_data'
   stop_loss: number | null
   target: number | null
   notes: string | null

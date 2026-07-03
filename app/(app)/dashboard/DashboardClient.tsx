@@ -18,6 +18,7 @@ import TradingWindowIndicator from '@/components/dashboard/TradingWindowIndicato
 import MarketNewsFeed from '@/components/dashboard/MarketNewsFeed'
 import ProactiveCoachingCard from '@/components/dashboard/ProactiveCoachingCard'
 import OffSystemDamageCard from '@/components/dashboard/OffSystemDamageCard'
+import LossAutopsyCard from '@/components/dashboard/LossAutopsyCard'
 import DisciplineScoreCard from '@/components/dashboard/DisciplineScoreCard'
 import MarketStateCard from '@/components/market/MarketStateCard'
 import { isGateActive } from '@/lib/eod-gate'
@@ -161,6 +162,9 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
 
       {/* Off-system damage — silent when there are no F trades this month */}
       <OffSystemDamageCard trades={trades} />
+
+      {/* Loss autopsy — silent until losing trades have excursion classification */}
+      <LossAutopsyCard trades={trades} />
 
       {/* Discipline score — silent when no trades today */}
       <DisciplineScoreCard

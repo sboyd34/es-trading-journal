@@ -5,6 +5,7 @@ import { Trade, RiskRules } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { POINT_VALUES } from '@/lib/tradovate-parser'
+import { TICK_SIZE } from '@/lib/excursions'
 import { format, parseISO, getHours, startOfWeek, startOfMonth, subDays } from 'date-fns'
 import {
   BarChart,
@@ -26,7 +27,7 @@ import { Sparkles, Loader2 } from 'lucide-react'
 import MonteCarloTab from '@/components/reports/MonteCarloTab'
 import toast from 'react-hot-toast'
 
-type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'montecarlo' | 'setups' | 'dayofweek' | 'emotiongrade' | 'location'
+type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'bracket' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'montecarlo' | 'setups' | 'dayofweek' | 'emotiongrade' | 'location'
 type MatrixDim = 'time' | 'day' | 'bias'
 type DateRange = 'this-week' | 'this-month' | 'last-30' | 'all-time'
 type ScenarioId =
@@ -43,6 +44,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'hourly', label: 'Hourly P&L' },
   { id: 'rmultiple', label: 'R-Multiple' },
   { id: 'maemfe', label: 'MAE/MFE' },
+  { id: 'bracket', label: 'Bracket Optimizer' },
   { id: 'drawdown', label: 'Drawdown' },
   { id: 'direction', label: 'Direction' },
   { id: 'emotion', label: 'Emotion' },
@@ -336,6 +338,54 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
         pnl: t.net_pnl,
         win: t.net_pnl > 0,
       }))
+  }, [trades])
+
+  // Bracket Optimizer — simulate fixed stop/target grids against real MAE/MFE.
+  // Only enriched ES/MES trades carry tick excursions.
+  const bracketData = useMemo(() => {
+    const STOPS = [4, 6, 8, 10, 12, 16, 20]
+    const TARGETS = [4, 6, 8, 12, 16, 20, 24]
+
+    const enriched = trades.filter(
+      (t) => t.excursion_status === 'complete' && t.mae_ticks != null && t.mfe_ticks != null,
+    )
+
+    if (enriched.length === 0) {
+      return { stops: STOPS, targets: TARGETS, cells: [], sampleSize: 0, best: null as null | { stop: number; target: number; expectancy: number; winRate: number } }
+    }
+
+    // Realized outcome in ticks for the fall-through case (neither bracket touched).
+    const prepped = enriched.map((t) => ({
+      mae: t.mae_ticks!,
+      mfe: t.mfe_ticks!,
+      realized: Math.round(((t.exit_price - t.entry_price) / TICK_SIZE) * (t.direction === 'long' ? 1 : -1)),
+    }))
+
+    let best: { stop: number; target: number; expectancy: number; winRate: number } | null = null
+
+    const cells = STOPS.map((stop) =>
+      TARGETS.map((target) => {
+        let sum = 0
+        let wins = 0
+        for (const p of prepped) {
+          const stopHit = p.mae >= stop
+          const tgtHit = p.mfe >= target
+          let res: number
+          if (stopHit && tgtHit) res = -stop // ambiguous → assume stop first (conservative)
+          else if (tgtHit) res = target
+          else if (stopHit) res = -stop
+          else res = p.realized
+          sum += res
+          if (res > 0) wins++
+        }
+        const expectancy = sum / prepped.length
+        const winRate = (wins / prepped.length) * 100
+        if (!best || expectancy > best.expectancy) best = { stop, target, expectancy, winRate }
+        return { stop, target, expectancy, winRate }
+      }),
+    )
+
+    return { stops: STOPS, targets: TARGETS, cells, sampleSize: prepped.length, best }
   }, [trades])
 
   // Drawdown
@@ -773,6 +823,83 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
             </ResponsiveContainer>
           ) : (
             <EmptyState message="No trades with MAE/MFE data — annotate trades to see this chart" />
+          )}
+        </div>
+      )}
+
+      {/* Bracket Optimizer */}
+      {tab === 'bracket' && (
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-gray-200 mb-1">Bracket Optimizer</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Expectancy (avg ticks/trade) for each fixed stop &amp; target, simulated against real MAE/MFE.
+            When both brackets were reachable in the same minute, the stop is assumed to hit first (conservative).
+          </p>
+          {bracketData.sampleSize === 0 ? (
+            <EmptyState message="No enriched trades yet — run the excursion backfill in Settings to populate MAE/MFE." />
+          ) : (
+            <>
+              {bracketData.best && (
+                <div className="mb-4 grid grid-cols-3 gap-3 text-xs">
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <p className="text-gray-500 mb-0.5">Best Bracket</p>
+                    <p className="text-white font-semibold text-sm">
+                      {bracketData.best.stop}t stop / {bracketData.best.target}t target
+                    </p>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <p className="text-gray-500 mb-0.5">Expectancy</p>
+                    <p className={cn('font-semibold text-sm', bracketData.best.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                      {bracketData.best.expectancy >= 0 ? '+' : ''}{bracketData.best.expectancy.toFixed(2)} ticks
+                    </p>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <p className="text-gray-500 mb-0.5">Win Rate</p>
+                    <p className="text-white font-semibold text-sm">{bracketData.best.winRate.toFixed(0)}%</p>
+                  </div>
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="text-xs">
+                  <thead>
+                    <tr>
+                      <th className="px-2 py-1.5 text-left text-gray-500 font-medium sticky left-0 bg-gray-800/50">Stop \ Target</th>
+                      {bracketData.targets.map((t) => (
+                        <th key={t} className="px-2 py-1.5 text-center text-gray-400 font-medium">{t}t</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bracketData.cells.map((row, ri) => (
+                      <tr key={bracketData.stops[ri]}>
+                        <td className="px-2 py-1.5 text-gray-400 font-medium sticky left-0 bg-gray-800/50">{bracketData.stops[ri]}t</td>
+                        {row.map((cell) => {
+                          const isBest = bracketData.best?.stop === cell.stop && bracketData.best?.target === cell.target
+                          // Green intensity for positive expectancy, red for negative.
+                          const mag = Math.min(1, Math.abs(cell.expectancy) / 6)
+                          const bg = cell.expectancy >= 0
+                            ? `rgba(52, 211, 153, ${0.08 + mag * 0.35})`
+                            : `rgba(248, 113, 113, ${0.08 + mag * 0.35})`
+                          return (
+                            <td
+                              key={cell.target}
+                              className={cn('px-2 py-1.5 text-center font-mono tabular-nums', isBest && 'ring-2 ring-inset ring-blue-400 rounded')}
+                              style={{ backgroundColor: bg }}
+                              title={`Stop ${cell.stop}t / Target ${cell.target}t — ${cell.winRate.toFixed(0)}% win`}
+                            >
+                              {cell.expectancy >= 0 ? '+' : ''}{cell.expectancy.toFixed(1)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-gray-600 mt-3">
+                Based on {bracketData.sampleSize} enriched trade{bracketData.sampleSize === 1 ? '' : 's'}. Cells show expectancy in ticks; hover for win rate.
+              </p>
+            </>
           )}
         </div>
       )}

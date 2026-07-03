@@ -22,6 +22,7 @@ import TradeNarrativePanel from '@/components/journal/TradeNarrativePanel'
 import SessionTimeline from '@/components/journal/SessionTimeline'
 import EodScorecard from '@/components/journal/EodScorecard'
 import { BulkDeleteBar } from '@/components/journal/BulkDeleteBar'
+import { runExcursionEnrichment } from '@/lib/enrich-excursions-client'
 
 const CandlestickChart = dynamic(
   () => import('@/components/blind-backtest/CandlestickChart'),
@@ -62,6 +63,10 @@ export default function JournalPage() {
   const [filterGrade, setFilterGrade] = useState<'all' | 'A' | 'B' | 'C' | 'F'>('all')
   const [filterMood, setFilterMood] = useState<string>('all')
   const [filterInstrument, setFilterInstrument] = useState<string>('all')
+
+  // Excursion column sort (only these two columns are sortable)
+  const [excSortCol, setExcSortCol] = useState<'mae_ticks' | 'mfe_ticks' | null>(null)
+  const [excSortDir, setExcSortDir] = useState<'asc' | 'desc'>('desc')
 
   // Import state
   const [parsedTrades, setParsedTrades] = useState<ReturnType<typeof parseTradovateCSV>>([])
@@ -157,6 +162,29 @@ export default function JournalPage() {
     return true
   })
 
+  // Apply excursion sort on top of filtering; nulls always sink to the bottom.
+  const sortedTrades = useMemo(() => {
+    if (!excSortCol) return filteredTrades
+    const dir = excSortDir === 'asc' ? 1 : -1
+    return [...filteredTrades].sort((a, b) => {
+      const av = a[excSortCol]
+      const bv = b[excSortCol]
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      return (av - bv) * dir
+    })
+  }, [filteredTrades, excSortCol, excSortDir])
+
+  const toggleExcSort = (col: 'mae_ticks' | 'mfe_ticks') => {
+    if (excSortCol === col) {
+      setExcSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setExcSortCol(col)
+      setExcSortDir('desc')
+    }
+  }
+
   // EOD gate — today's date (Chicago) and gate active status
   const todayChicagoStr = useMemo(() => getTodayChicagoDateString(), [])
   const todayTrades = useMemo(
@@ -239,6 +267,16 @@ export default function JournalPage() {
       setParsedTrades([])
       setTab('log')
       loadTrades()
+
+      // Enrich MAE/MFE in the background — never blocks or fails the import.
+      runExcursionEnrichment({
+        onProgress: (p) => {
+          if (p.remaining === 0 && p.complete > 0) {
+            toast.success(`Excursions computed for ${p.complete} trades`)
+            loadTrades()
+          }
+        },
+      })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Import failed')
     } finally {
@@ -518,6 +556,20 @@ export default function JournalPage() {
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Exit</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Gross</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Net</th>
+                      <th
+                        className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-white"
+                        onClick={() => toggleExcSort('mae_ticks')}
+                        title="Max Adverse Excursion (ticks)"
+                      >
+                        MAE{excSortCol === 'mae_ticks' ? (excSortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                      </th>
+                      <th
+                        className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-white"
+                        onClick={() => toggleExcSort('mfe_ticks')}
+                        title="Max Favorable Excursion (ticks)"
+                      >
+                        MFE{excSortCol === 'mfe_ticks' ? (excSortDir === 'desc' ? ' ▼' : ' ▲') : ''}
+                      </th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Mood</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Grade</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Setup</th>
@@ -526,7 +578,7 @@ export default function JournalPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTrades.map((trade, i) => {
+                    {sortedTrades.map((trade, i) => {
                       const flags = flagMap.get(trade.id) ?? []
                       const hasCritical = flags.some((f) => f.severity === 'critical')
                       const hasWarning = flags.some((f) => f.severity === 'warning')
@@ -615,6 +667,28 @@ export default function JournalPage() {
                             </span>
                           ) : (
                             formatCurrency(trade.net_pnl)
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-rose-300/80">
+                          {trade.excursion_status === 'complete' && trade.mae_ticks != null ? (
+                            <span title={trade.excursion_source === 'polygon_1min_edgebar' ? 'Edge-bar estimate (intra-bar order unknown)' : undefined}>
+                              {trade.mae_ticks}{trade.excursion_source === 'polygon_1min_edgebar' ? '*' : ''}
+                            </span>
+                          ) : trade.excursion_status === 'pending' ? (
+                            <span className="text-gray-600">···</span>
+                          ) : (
+                            <span className="text-gray-700">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-emerald-300/80">
+                          {trade.excursion_status === 'complete' && trade.mfe_ticks != null ? (
+                            <span title={trade.excursion_source === 'polygon_1min_edgebar' ? 'Edge-bar estimate (intra-bar order unknown)' : undefined}>
+                              {trade.mfe_ticks}{trade.excursion_source === 'polygon_1min_edgebar' ? '*' : ''}
+                            </span>
+                          ) : trade.excursion_status === 'pending' ? (
+                            <span className="text-gray-600">···</span>
+                          ) : (
+                            <span className="text-gray-700">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-center text-lg">
