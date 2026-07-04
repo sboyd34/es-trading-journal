@@ -19,6 +19,7 @@ import {
   Heart,
   BarChart3,
   TrendingUp,
+  Activity,
 } from 'lucide-react'
 
 function dateOnly(s: string): Date {
@@ -405,6 +406,23 @@ export default function WeeklyReviewPage() {
                     Emotional Trends
                   </h2>
                   <p className="text-sm text-gray-300 leading-relaxed">{review.review.emotional_trends}</p>
+                </div>
+              )}
+
+              {/* Loss autopsy — MAE/MFE excursion verdict. Silent when no enrichment data. */}
+              {review.review.excursion_analysis && (
+                <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
+                  <h2 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-cyan-400" />
+                    Loss Autopsy
+                  </h2>
+                  <p className="text-sm text-gray-300 leading-relaxed">{review.review.excursion_analysis.verdict}</p>
+                  {review.review.excursion_analysis.focus && (
+                    <p className="mt-3 text-sm text-cyan-300 flex items-start gap-2">
+                      <Target className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>{review.review.excursion_analysis.focus}</span>
+                    </p>
+                  )}
                 </div>
               )}
 

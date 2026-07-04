@@ -232,6 +232,10 @@ export interface WeeklyReviewContent {
     days: Array<{ date: string; score: number | null }>
     narrative: string
   }
+  excursion_analysis?: {
+    verdict: string
+    focus: string | null
+  } | null
   top_lessons: string[]
   next_week_focus: string[]
 }

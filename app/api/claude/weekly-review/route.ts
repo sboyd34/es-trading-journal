@@ -160,6 +160,39 @@ export async function POST(request: NextRequest) {
       weekAvgScore ? `Weekly avg: ${weekAvgScore}` : 'Weekly avg: N/A (no scores recorded)',
     ].join('\n')
 
+    // Excursion / loss-autopsy stats — only trades with completed MAE/MFE enrichment.
+    // Excursions are stored in TICKS (ES/MES tick = 0.25 pt). These separate "bad
+    // entry" losses (high MAE, never went green) from "bad exit" losses (ran far
+    // in favor, then reversed). "Winners that died" = losers whose MFE crossed the
+    // WINNER_DIED_TICKS threshold before failing.
+    const WINNER_DIED_TICKS = 24
+    const excursionTrades = trades.filter((t) => t.excursion_status === 'complete')
+    const excursionExcluded = trades.length - excursionTrades.length
+    const avgTicks = (rows: Trade[], key: 'mae_ticks' | 'mfe_ticks'): number | null => {
+      const vals = rows.map((t) => t[key]).filter((v): v is number => v !== null)
+      return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null
+    }
+    const exWinners = excursionTrades.filter((t) => t.net_pnl > 0)
+    const exLosers = excursionTrades.filter((t) => t.net_pnl <= 0)
+    const avgMaeWinners = avgTicks(exWinners, 'mae_ticks')
+    const avgMaeLosers = avgTicks(exLosers, 'mae_ticks')
+    const avgMfeLosers = avgTicks(exLosers, 'mfe_ticks')
+    const straightLosses = excursionTrades.filter((t) => t.loss_type === 'straight_loss').length
+    const reversalLosses = excursionTrades.filter((t) => t.loss_type === 'reversal_loss').length
+    const winnersThatDied = exLosers.filter((t) => (t.mfe_ticks ?? 0) > WINNER_DIED_TICKS).length
+
+    const fmtTicks = (v: number | null) => (v === null ? 'n/a' : `${v.toFixed(1)} ticks`)
+    const excursionSection = excursionTrades.length === 0
+      ? `Excursion / loss-autopsy: no trades this week have completed MAE/MFE enrichment (${excursionExcluded} excluded). Set excursion_analysis to null — do not speculate.`
+      : [
+          `Excursion / loss-autopsy stats (ticks; ES/MES tick = 0.25 pt; based on ${excursionTrades.length} of ${trades.length} trades with complete enrichment, ${excursionExcluded} excluded — respect the sample size):`,
+          `- Avg MAE of winners: ${fmtTicks(avgMaeWinners)} (heat taken before winners worked)`,
+          `- Avg MAE of losers: ${fmtTicks(avgMaeLosers)} (heat taken before losers failed)`,
+          `- Avg MFE of losers: ${fmtTicks(avgMfeLosers)} (how far losers ran in favor before reversing)`,
+          `- Loss types: ${straightLosses} straight loss (never went green — likely bad entry/location), ${reversalLosses} reversal loss (went green then failed — likely bad exit/management)`,
+          `- "Winners that died": ${winnersThatDied} losing trade(s) whose MFE exceeded ${WINNER_DIED_TICKS} ticks (${WINNER_DIED_TICKS * 0.25} pts) before reversing to a loss`,
+        ].join('\n')
+
     const systemPrompt = `You are an expert ES futures trading coach reviewing a trader's week. This trader uses a strict rules-based system. Be specific — name exact rules, give percentages and dollar amounts. Avoid generic platitudes.
 
 TRADING SYSTEM RULES:
@@ -197,6 +230,10 @@ Return ONLY valid JSON with this exact structure:
     }
   ],
   "emotional_trends": "Mood patterns across the week, revenge/FOMO clusters, how state evolved",
+  "excursion_analysis": {
+    "verdict": "1-2 sentences citing the tick numbers: are losses coming from bad ENTRIES (high MAE, straight losses that never went green) or bad EXITS (high MFE, reversal losses, winners that died)? Name which dominates. If no excursion data was provided, set this whole object to null.",
+    "focus": "The single most actionable excursion-driven fix (e.g. 'tighten entries at location' vs 'take partials at +X ticks'), or null"
+  },
   "discipline_trend": {
     "days": [
       {"date": "YYYY-MM-DD", "score": <number or null>}
@@ -214,6 +251,8 @@ Trades by day:
 ${dailySummary}
 
 ${disciplineSection}
+
+${excursionSection}
 
 ${sessionContext ? `Daily journal context:\n${sessionContext}\n` : ''}
 Generate the weekly review.`
