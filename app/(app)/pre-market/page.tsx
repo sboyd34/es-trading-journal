@@ -69,6 +69,27 @@ function formatRelative(publishedAt: string): string {
   return `${h}h ago`
 }
 
+// Current wall-clock date/time in America/Chicago, independent of the browser's
+// own timezone. Uses the OS tz database via Intl (DST-correct) rather than
+// new Date() (browser-local) or UTC offset math (breaks across DST).
+function chicagoNowParts(): { date: string; weekday: string; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    weekday: 'short',
+  }).formatToParts(new Date())
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  let hour = parseInt(get('hour'), 10)
+  if (hour === 24) hour = 0 // some engines emit '24' at midnight under hour12:false
+  return {
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    weekday: get('weekday'),
+    hour,
+    minute: parseInt(get('minute'), 10),
+  }
+}
+
 interface BriefSection {
   key: keyof PreMarketBrief
   label: string
@@ -111,8 +132,8 @@ export default function PreMarketPage() {
   const [earningsLoading, setEarningsLoading] = useState(true)
   const [autoImported, setAutoImported] = useState(false)
 
-  const today = format(new Date(), 'yyyy-MM-dd')
-  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+  const { date: today, weekday, hour, minute } = chicagoNowParts()
+  const yesterday = format(subDays(parseISO(today), 1), 'yyyy-MM-dd')
 
   const supabase = createClient()
 
@@ -217,8 +238,25 @@ export default function PreMarketPage() {
     }
   }
 
+  // Missing-brief warning: on a weekday, at/after 08:25 CT, with no daily_briefs
+  // row for today (autoImported reflects that row's existence). Gated on
+  // !loadingSession so it never flashes before the query resolves.
+  const isWeekday = weekday !== 'Sat' && weekday !== 'Sun'
+  const afterBriefCutoff = hour > 8 || (hour === 8 && minute >= 25)
+  const showMissingBriefWarning =
+    !loadingSession && isWeekday && afterBriefCutoff && !autoImported
+
   return (
     <div className="space-y-6 max-w-4xl">
+      {showMissingBriefWarning && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-500/50 bg-red-950/60 px-4 py-3 shadow-lg shadow-red-950/30">
+          <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+          <p className="text-sm font-semibold text-red-200 leading-relaxed">
+            ⚠ No pre-market brief received today — the trading assistant may have failed. Check /tmp/trading_assistant.log and briefs/auto_log.txt on the Mac.
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Pre-Market Brief</h1>
