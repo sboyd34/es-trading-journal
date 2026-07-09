@@ -3,10 +3,11 @@ export const APEX_CONFIGS = {
   50000:  { profitTarget: 3000,  trailingDrawdown: 2000, dll: 1000, maxContracts: 6  },
   100000: { profitTarget: 6000,  trailingDrawdown: 3000, dll: 1500, maxContracts: 8  },
   150000: { profitTarget: 9000,  trailingDrawdown: 4000, dll: 2000, maxContracts: 12 },
+  250000: { profitTarget: 15000, trailingDrawdown: 6500, dll: 3250, maxContracts: 27 },
 } as const
 
 export type AccountSize = keyof typeof APEX_CONFIGS
-export const ACCOUNT_SIZES = [25000, 50000, 100000, 150000] as const satisfies readonly AccountSize[]
+export const ACCOUNT_SIZES = [25000, 50000, 100000, 150000, 250000] as const satisfies readonly AccountSize[]
 
 // Eval and PA soft/hard stop constants (from trading system rules)
 export const RISK_RULES = {
