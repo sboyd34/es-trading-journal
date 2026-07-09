@@ -23,6 +23,7 @@ import DisciplineScoreCard from '@/components/dashboard/DisciplineScoreCard'
 import MarketStateCard from '@/components/market/MarketStateCard'
 import { isGateActive } from '@/lib/eod-gate'
 import PreSessionBanner from '@/components/dashboard/PreSessionBanner'
+import EvalPassOddsCard from '@/components/dashboard/EvalPassOddsCard'
 
 interface DashboardClientProps {
   trades: Trade[]
@@ -158,6 +159,9 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
       <PreSessionBanner session={session} />
 
       {/* Stats cards */}
+      {/* Apex eval pass odds — silent until first simulation run on /backtest/eval */}
+      <EvalPassOddsCard />
+
       <StatsCards stats={stats} todayPnL={stats.todayPnL} todayGrossPnL={stats.todayGrossPnL} gateActive={gateActive} />
 
       {/* Off-system damage — silent when there are no F trades this month */}
