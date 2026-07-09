@@ -426,6 +426,10 @@ export default function BacktestPage() {
           className="px-5 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition">
           📊 Bracket Sweep
         </button>
+        <button onClick={() => router.push('/backtest/eval')}
+          className="px-5 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition">
+          🎲 Eval
+        </button>
       </div>
 
       {/* Blind Backtest Engine */}
