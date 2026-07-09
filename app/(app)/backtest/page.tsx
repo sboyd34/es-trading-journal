@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { BacktestSession, BacktestTrade, Trade } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -106,6 +107,7 @@ type PageTab = 'session' | 'analytics' | 'comparison'
 
 export default function BacktestPage() {
   const today = format(new Date(), 'yyyy-MM-dd')
+  const router = useRouter()
 
   const [topTab, setTopTab] = useState<TopTab>('blind')
   const [selectedDate, setSelectedDate] = useState(today)
@@ -419,6 +421,10 @@ export default function BacktestPage() {
           className={cn('px-5 py-2 rounded-lg text-sm font-medium transition',
             topTab === 'manual' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
           📋 Session Log
+        </button>
+        <button onClick={() => router.push('/backtest/brackets')}
+          className="px-5 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition">
+          📊 Bracket Sweep
         </button>
       </div>
 
