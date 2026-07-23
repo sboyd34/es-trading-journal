@@ -48,6 +48,17 @@ export async function GET() {
       notes: trade.notes || '',
       reflection: trade.reflection || '',
       tags: (trade.tags || []).join('; '),
+      trade_bias: trade.trade_bias || '',
+      trade_setup: trade.trade_setup || '',
+      trade_trigger: trade.trade_trigger || '',
+      trade_location: trade.trade_location || '',
+      trade_risk: trade.trade_risk || '',
+      entry_chart_url: trade.entry_chart_url || '',
+      exit_chart_url: trade.exit_chart_url || '',
+      ai_narrative: trade.ai_narrative?.narrative || '',
+      ai_what_went_right: (trade.ai_narrative?.what_went_right || []).join('; '),
+      ai_what_went_wrong: (trade.ai_narrative?.what_went_wrong || []).join('; '),
+      ai_key_lesson: trade.ai_narrative?.key_lesson || '',
       tradovate_order_id: trade.tradovate_order_id || '',
     }))
 
