@@ -5,7 +5,7 @@ import { getMacroEventsForDate, hasSecondaryWindowConflict } from '@/lib/econ-ca
 import { formatEdgeStatsSection, type EdgeStat } from '@/lib/edge-stats'
 import { fetchMarketContext, formatMarketContextSection } from '@/lib/market-context'
 import { formatPriorSessionSection, type PriorSession } from '@/lib/prior-session'
-import { format } from 'date-fns'
+import { getTodayChicagoDateString } from '@/lib/eod-gate'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -194,7 +194,7 @@ export async function generatePreMarketBrief(
   edgeStats?: EdgeStat[],
   priorSession?: PriorSession | null
 ): Promise<PreMarketBrief | null> {
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = getTodayChicagoDateString()
   const [newsSection, earningsSection, marketSection] = await Promise.all([
     buildNewsSection(clientHeadlines),
     buildEarningsSection(today),

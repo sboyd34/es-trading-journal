@@ -1,4 +1,5 @@
 import Papa from 'papaparse'
+import { getTodayChicagoDateString } from '@/lib/eod-gate'
 
 export interface ParsedTrade {
   date: string
@@ -56,13 +57,45 @@ function extractInstrument(symbol: string): string {
   return 'ES'
 }
 
-// MM/DD/YYYY HH:MM:SS → Date
+const CHICAGO_TZ = 'America/Chicago'
+
+// Tradovate's CSV export timestamps are wall-clock time in the account's local
+// (Central) timezone with no offset marker, so a naive `new Date(str)` parse
+// silently treats them as server-local time (UTC on Vercel) — off by 5-6 hours
+// depending on DST. This explicitly localizes to America/Chicago instead,
+// using the same UTC-offset-diff trick as eod-gate.ts's makeChicagoTimeOnDate.
+// MM/DD/YYYY HH:MM:SS (Central wall clock) → Date (correct UTC instant)
 function parseTimestamp(ts: string): Date {
   const [datePart, timePart] = ts.trim().split(' ')
-  const [month, day, year] = datePart.split('/')
-  return new Date(
-    `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${timePart}`
+  const [month, day, year] = datePart.split('/').map((s) => parseInt(s, 10))
+  const [hour, minute, second] = timePart.split(':').map((s) => parseInt(s, 10))
+
+  const wallUtc = Date.UTC(year, month - 1, day, hour, minute, second)
+  const chicagoWallString = new Date(wallUtc).toLocaleString('en-US', {
+    timeZone: CHICAGO_TZ,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+  const match = chicagoWallString.match(
+    /(\d{2})\/(\d{2})\/(\d{4}),\s*(\d{2}):(\d{2}):(\d{2})/,
   )
+  if (!match) return new Date(wallUtc)
+  const [, cm, cd, cy, ch, cmin, cs] = match
+  const chicagoWallUtc = Date.UTC(
+    parseInt(cy, 10),
+    parseInt(cm, 10) - 1,
+    parseInt(cd, 10),
+    parseInt(ch, 10),
+    parseInt(cmin, 10),
+    parseInt(cs, 10),
+  )
+  const offsetMs = wallUtc - chicagoWallUtc
+  return new Date(wallUtc + offsetMs)
 }
 
 interface RawRow {
@@ -276,7 +309,7 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
       accountId,
       contractName: symbol,
       instrument,
-      date: boughtDate.toISOString().split('T')[0],
+      date: getTodayChicagoDateString(boughtDate),
     })
     fills.push({
       id: sellFillId,
@@ -287,7 +320,7 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
       accountId,
       contractName: symbol,
       instrument,
-      date: soldDate.toISOString().split('T')[0],
+      date: getTodayChicagoDateString(soldDate),
     })
   }
 

@@ -11,6 +11,7 @@ import BacktestTradeForm from '@/components/backtest/BacktestTradeForm'
 import BlindBacktestClient from '@/components/blind-backtest/BlindBacktestClient'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { getTodayChicagoDateString } from '@/lib/eod-gate'
 import { Plus, Trash2, Edit2, Brain, TrendingUp, TrendingDown } from 'lucide-react'
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
 
@@ -106,7 +107,7 @@ function classifyEdge(input: {
 type PageTab = 'session' | 'analytics' | 'comparison'
 
 export default function BacktestPage() {
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = getTodayChicagoDateString()
   const router = useRouter()
 
   const [topTab, setTopTab] = useState<TopTab>('blind')

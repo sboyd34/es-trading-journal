@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { format } from 'date-fns'
+import { getTodayChicagoDateString } from '@/lib/eod-gate'
 import { generatePreMarketBrief } from '@/lib/pre-market-brief'
 import { computeEdgeStats } from '@/lib/edge-stats'
 import { computePriorSession } from '@/lib/prior-session'
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createServiceClient()
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = getTodayChicagoDateString()
 
   const { data: profiles } = await supabase.from('profiles').select('id').limit(1)
   const userId = profiles?.[0]?.id

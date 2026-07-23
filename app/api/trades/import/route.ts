@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ParsedTrade } from '@/lib/tradovate-parser'
 import { fetchPolygonNews, mapNewsToTrades, type TradeNewsArticleRef } from '@/lib/polygon-news'
+import { getTodayChicagoDateString } from '@/lib/eod-gate'
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +20,21 @@ export async function POST(request: NextRequest) {
 
     if (!Array.isArray(trades) || trades.length === 0) {
       return NextResponse.json({ error: 'No trades provided' }, { status: 400 })
+    }
+
+    // Sanity check: a trade dated more than 1 day past America/Chicago "today"
+    // means the date field was bucketed wrong upstream (e.g. UTC instead of
+    // Central) — this is the exact symptom of the timezone bug that caused
+    // evening trades to roll into a phantom future-dated bucket.
+    const todayChicago = getTodayChicagoDateString()
+    const maxAllowedDate = new Date(`${todayChicago}T00:00:00Z`)
+    maxAllowedDate.setUTCDate(maxAllowedDate.getUTCDate() + 1)
+    for (const trade of trades) {
+      if (new Date(`${trade.date}T00:00:00Z`) > maxAllowedDate) {
+        console.warn(
+          `[import] trade date ${trade.date} is more than 1 day past Chicago "today" (${todayChicago}) — possible timezone bucketing bug`,
+        )
+      }
     }
 
     // Fetch news to detect news-driven trades before inserting, and

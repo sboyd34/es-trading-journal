@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Trade, RiskRules, DailySession } from '@/types'
 import DashboardClient from './DashboardClient'
-import { format } from 'date-fns'
+import { getTodayChicagoDateString } from '@/lib/eod-gate'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -10,7 +10,7 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = getTodayChicagoDateString()
 
   // Fetch all trades
   const { data: trades } = await supabase
