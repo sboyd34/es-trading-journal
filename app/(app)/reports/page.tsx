@@ -25,6 +25,7 @@ import {
 } from 'recharts'
 import { Sparkles, Loader2 } from 'lucide-react'
 import MonteCarloTab from '@/components/reports/MonteCarloTab'
+import { SYSTEM_SETUPS } from '@/lib/trading-system'
 import toast from 'react-hot-toast'
 
 type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'bracket' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'montecarlo' | 'setups' | 'dayofweek' | 'emotiongrade' | 'location'
@@ -108,7 +109,21 @@ function isInPrimaryWindow(entryTime: string): boolean {
   }
 }
 
+const SETUP_KEYS = SYSTEM_SETUPS.filter((s) => s !== 'No Setup')
+
+// Row headers only — the matrix is narrow and full setup names overflow the label column.
+const SETUP_LABELS: Record<string, string> = {
+  'Divergence/Trendline Break': 'Divergence/TB',
+  'Fresh Supply/Demand': 'Supply/Demand',
+}
+const setupLabel = (s: string) => SETUP_LABELS[s] ?? s
+
 function matchSetupName(trade: Trade): string | null {
+  // An exact dropdown tag wins outright — free-text notes must not override it.
+  const tag = (trade.setup_tag ?? '').trim()
+  const exact = SETUP_KEYS.find((s) => s === tag)
+  if (exact) return exact
+
   const raw = `${trade.setup_tag ?? ''} ${trade.trade_setup ?? ''}`.toLowerCase().trim()
   if (!raw) return null
   if (raw.includes('orb')) return 'ORB Break'
@@ -116,9 +131,14 @@ function matchSetupName(trade: Trade): string | null {
   if (raw.includes('avwap') || (raw.includes('vwap') && raw.includes('bounce'))) return 'AVWAP Bounce'
   if (raw.includes('fvg') || raw.includes('fair value')) return 'FVG Bounce'
   if (raw.includes('vah') || raw.includes('val ') || raw.includes('value area')) return 'VAH/VAL Bounce'
-  if (raw.includes('divergence') || raw.includes('trendline')) return 'Divergence/TB'
+  if (raw.includes('divergence') || raw.includes('trendline')) return 'Divergence/Trendline Break'
+  if (raw.includes('confluence')) return 'A+ Confluence'
+  if (raw.includes('supply') || raw.includes('demand')) return 'Fresh Supply/Demand'
+  if (raw.includes('fireline')) return 'FireLines Level'
+  if (raw.includes('price action')) return 'Price Action'
   return null
 }
+
 
 function ctTotalMins(entryTime: string): number | null {
   try {
@@ -535,7 +555,6 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
 
   // ── Setup Performance Matrix ──────────────────────────────────────────────
   const setupMatrixData = useMemo(() => {
-    const SETUP_KEYS = ['ORB Break', 'TTM Squeeze', 'AVWAP Bounce', 'FVG Bounce', 'VAH/VAL Bounce', 'Divergence/TB'] as const
     const TIME_COLS = ['Primary', 'Contd.', 'Late', 'Secondary', 'Other'] as const
     const DAY_COLS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
     const BIAS_COLS = ['Bull', 'Bear', 'Neutral', '—'] as const
@@ -632,7 +651,6 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
   // ── Location Performance ──────────────────────────────────────────────────
   const locationData = useMemo(() => {
     const LOC_KEYS = ['ORH/ORL', 'VWAP/AVWAP', 'VAH/VAL', 'PDH/PDL', 'Overnight Hi/Lo', 'Prior Swing', 'Supply/Demand', 'Other', 'None/Untagged'] as const
-    const SETUP_KEYS = ['ORB Break', 'TTM Squeeze', 'AVWAP Bounce', 'FVG Bounce', 'VAH/VAL Bounce', 'Divergence/TB'] as const
 
     type Cell = { n: number; wins: number; pnl: number; grossW: number; grossL: number }
     const mk = (): Cell => ({ n: 0, wins: 0, pnl: 0, grossW: 0, grossL: 0 })
@@ -1364,7 +1382,7 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-gray-600 w-4 tabular-nums">{i + 1}</span>
-                              <span className="font-medium text-gray-200">{s.name}</span>
+                              <span className="font-medium text-gray-200">{setupLabel(s.name)}</span>
                             </div>
                           </td>
                           <td className="px-5 py-3 text-right text-gray-400 tabular-nums">{s.n}</td>
@@ -1441,7 +1459,7 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
                       <tbody>
                         {SETUP_KEYS.map(setup => (
                           <tr key={setup} className="border-b border-gray-700/20 hover:bg-gray-700/10 transition">
-                            <td className="px-4 py-3 font-medium text-gray-300 whitespace-nowrap">{setup}</td>
+                            <td className="px-4 py-3 font-medium text-gray-300 whitespace-nowrap">{setupLabel(setup)}</td>
                             {dimCols.map(col => {
                               const cell = dimMatrix[setup][col]
                               return (
@@ -1514,7 +1532,7 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
                       <tbody>
                         {SETUP_KEYS.map(setup => (
                           <tr key={setup} className="border-b border-gray-700/20 hover:bg-gray-700/10 transition">
-                            <td className="px-4 py-3 font-medium text-gray-300 whitespace-nowrap">{setup}</td>
+                            <td className="px-4 py-3 font-medium text-gray-300 whitespace-nowrap">{setupLabel(setup)}</td>
                             {dimCols.map(col => {
                               const cell = dimMatrix[setup][col]
                               const avg = cell.n > 0 ? cell.pnl / cell.n : null
@@ -1925,7 +1943,7 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
                       <tbody>
                         {SETUP_KEYS.map(setup => (
                           <tr key={setup} className="border-b border-gray-700/20 hover:bg-gray-700/10 transition">
-                            <td className="px-4 py-3 font-medium text-gray-300 whitespace-nowrap">{setup}</td>
+                            <td className="px-4 py-3 font-medium text-gray-300 whitespace-nowrap">{setupLabel(setup)}</td>
                             {LOC_KEYS.filter(l => overall[l].n > 0).map(loc => {
                               const cell = matrix[setup][loc]
                               return (
