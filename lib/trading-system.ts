@@ -8,6 +8,7 @@ export const SYSTEM_SETUPS = [
   'Fresh Supply/Demand',
   'Divergence/Trendline Break',
   'FireLines Level',
+  'Price Action',
   'No Setup',
 ] as const
 
