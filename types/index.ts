@@ -39,6 +39,7 @@ export interface Trade {
   excursion_status: 'pending' | 'complete' | 'failed' | 'no_data'
   stop_loss: number | null
   target: number | null
+  atr_at_entry: number | null
   notes: string | null
   reflection: string | null
   tags: string[]

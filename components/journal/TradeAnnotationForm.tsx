@@ -46,6 +46,7 @@ export default function TradeAnnotationForm({
   const [mfe, setMfe] = useState(trade.mfe?.toString() || '')
   const [stopLoss, setStopLoss] = useState(initialStopLoss ?? trade.stop_loss?.toString() ?? '')
   const [target, setTarget] = useState(initialTarget ?? trade.target?.toString() ?? '')
+  const [atrAtEntry, setAtrAtEntry] = useState(trade.atr_at_entry?.toString() || '')
   const [notes, setNotes] = useState(trade.notes || '')
   const [reflection, setReflection] = useState(trade.reflection || '')
   const [tags, setTags] = useState(() => {
@@ -196,6 +197,7 @@ export default function TradeAnnotationForm({
           mfe: offSystem ? null : (mfe ? parseFloat(mfe) : null),
           stop_loss: offSystem ? null : (stopLoss ? parseFloat(stopLoss) : null),
           target: offSystem ? null : (target ? parseFloat(target) : null),
+          atr_at_entry: offSystem ? null : (atrAtEntry ? parseFloat(atrAtEntry) : null),
           notes: notes || null,
           reflection: reflection || null,
           tags: offSystem ? [] : (tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : []),
@@ -443,6 +445,17 @@ export default function TradeAnnotationForm({
               step="0.25"
               value={mfe}
               onChange={(e) => setMfe(e.target.value)}
+              placeholder="0.00"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-400 mb-1">ATR At Entry</label>
+            <input
+              type="number"
+              step="0.25"
+              value={atrAtEntry}
+              onChange={(e) => setAtrAtEntry(e.target.value)}
               placeholder="0.00"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />

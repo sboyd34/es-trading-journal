@@ -43,6 +43,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       'mfe',
       'stop_loss',
       'target',
+      'atr_at_entry',
       'notes',
       'reflection',
       'tags',
