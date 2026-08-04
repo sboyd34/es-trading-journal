@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Trade, WeeklyReview, DailySession } from '@/types'
 import { computeBehaviorStats } from '@/lib/behavior-stats'
 import BehaviorPatternsSection from '@/components/weekly-review/BehaviorPatternsSection'
+import MarketBriefPanel from '@/components/weekly-review/MarketBriefPanel'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -277,6 +278,9 @@ export default function WeeklyReviewPage() {
               </p>
             </div>
           )}
+
+          {/* Market brief — Sunday-generated recap + week-ahead plan */}
+          <MarketBriefPanel weekStart={weekStart} />
 
           {/* Behavior Patterns — deterministic discipline stats */}
           <BehaviorPatternsSection stats={behaviorStats} />
