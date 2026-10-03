@@ -109,7 +109,17 @@ export async function POST() {
             news_articles: nearbyNews.length > 0 ? nearbyNews : null,
           }
         })
-        const { data: insertedData } = await supabase.from('trades').insert(rows).select()
+        // Belt-and-braces against the existingIds check above. That check is a
+        // read-then-write race: a cron sync and a manual sync overlapping would
+        // both pass it and both insert. The unique index makes the second one a
+        // no-op instead of a duplicate.
+        const { data: insertedData } = await supabase
+          .from('trades')
+          .upsert(rows, {
+            onConflict: 'user_id,tradovate_order_id',
+            ignoreDuplicates: true,
+          })
+          .select()
         inserted = insertedData?.length ?? 0
       }
     }

@@ -102,9 +102,16 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    // Skip trades already imported, keyed on the broker fill-id pair. This makes
+    // re-importing an overlapping CSV safe, which is what lets you always export
+    // the widest window rather than hand-picking non-overlapping ones — the
+    // practice that silently dropped a trade between two import batches.
     const { data, error } = await supabase
       .from('trades')
-      .insert(tradeRows)
+      .upsert(tradeRows, {
+        onConflict: 'user_id,tradovate_order_id',
+        ignoreDuplicates: true,
+      })
       .select()
 
     if (error) {
@@ -112,7 +119,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ inserted: data?.length || 0 })
+    const inserted = data?.length || 0
+    return NextResponse.json({ inserted, skipped: trades.length - inserted })
   } catch (err) {
     console.error('Import route error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
