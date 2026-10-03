@@ -26,16 +26,24 @@ export const POINT_VALUES: Record<string, number> = {
 }
 
 // All-in round-turn fees per contract: broker commission + exchange + NFA + clearing.
-// Single source of truth for BOTH import paths (this CSV parser and the live API
-// sync in tradovate-api.ts) so the two can never diverge again — that divergence
-// (0.31/3.10 here vs a flat 4.10 there, all brokerage-only) is what made journal
-// net_pnl drift above Tradovate's true net. MES & NQ are reconciled from real
-// 2026-06-16 fills against Tradovate's reported net; ES & MNQ are best estimates —
-// verify against a Tradovate statement if your commission plan changes.
+// Single source of truth for ALL import paths — the CSV importer
+// (app/api/trades/import) and the live API sync (app/api/tradovate/sync) both
+// resolve fees through feeForContracts() below. Never re-declare these rates
+// inside a route; a private copy in the CSV importer is exactly how the two
+// paths drifted apart and started writing different commissions for the same
+// trade depending on how it was ingested.
+//
+// ES & MES are reconciled against a real Tradovate Performance export
+// (2026-07-30, 9 round turns): these rates reproduce Tradovate's reported net of
+// $489.24 to the cent. The previously-stored ES 4.10 / MES 1.01 did NOT — they
+// produce $479.81 — so treat those values as disproven, not merely stale.
+//
+// NQ & MNQ are UNVERIFIED estimates carried over from the old table. Reconcile
+// them against a statement before trusting net P&L on those contracts.
 export const ALLIN_FEE_PER_CONTRACT: Record<string, number> = {
-  ES: 4.10,
+  ES: 3.10,
   NQ: 3.47,
-  MES: 1.01,
+  MES: 1.04,
   MNQ: 1.04,
 }
 

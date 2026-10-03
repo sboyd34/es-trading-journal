@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { ParsedTrade } from '@/lib/tradovate-parser'
+import { ParsedTrade, feeForContracts } from '@/lib/tradovate-parser'
 import { fetchPolygonNews, mapNewsToTrades, type TradeNewsArticleRef } from '@/lib/polygon-news'
 import { getTodayChicagoDateString } from '@/lib/eod-gate'
 
@@ -58,11 +58,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const ALL_IN_RATES: Record<string, number> = {
-      ES: 3.10,
-      MES: 1.04,
-    }
-
     // Resolve broker_account_id → apex_accounts.id once
     const brokerIds = Array.from(
       new Set(trades.map((t) => t.broker_account_id).filter((id): id is string => !!id)),
@@ -83,7 +78,7 @@ export async function POST(request: NextRequest) {
     const tradeRows = trades.map((trade) => {
       const instrument = trade.instrument || 'ES'
       const quantity = trade.quantity
-      const commission = Math.round((ALL_IN_RATES[instrument] ?? 3.472) * quantity * 1000) / 1000
+      const commission = feeForContracts(instrument, quantity)
       const accountId = trade.broker_account_id ? brokerToAccountId.get(trade.broker_account_id) ?? null : null
       const nearbyNews = newsByEntryTime.get(trade.entry_time) ?? []
 
