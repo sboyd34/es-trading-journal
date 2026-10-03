@@ -119,11 +119,16 @@ SQL files live in `supabase/`. No automated tracker yet — runs are manual:
 2. Open the Supabase dashboard → SQL editor → paste & run
 3. Run `npm run check:schema` to confirm the new column(s) are live, then note in session carryover that it's been applied
 
-`npm run check:schema` auto-parses every `ADD COLUMN` in `supabase/*.sql` and probes the live DB — a committed-but-unapplied migration shows up as a named missing column with the exact `.sql` file to run. Run it before any deploy that depends on a recent migration.
+`npm run check:schema` auto-parses every `ADD COLUMN` **and every `CREATE INDEX`** in `supabase/*.sql`, then probes the live DB — a committed-but-unapplied migration shows up as a named missing column or index with the exact `.sql` file to run. Run it before any deploy that depends on a recent migration.
 
-Outstanding migrations (verify with `npm run check:schema`):
+Columns are probed one request each (a missing one answers for itself with `42703`). Indexes can't be: they change the query plan, never the shape of a response, so they route through the `public.schema_index_names()` helper from `add_schema_index_introspection.sql`. If that helper isn't applied the check **fails rather than skipping** — unverified is not verified, which is the whole point of the tool.
 
-- `add_pre_open_check.sql` — adds `daily_sessions.pre_open_check`. **Must be run** or the pre-market ritual silently fails to save (Postgres `42703`), which also pins the Discipline Score's `prep` factor at 0.
+Outstanding migrations: none. Verified live as of 2026-10-02 — 33 migration-added columns, 8 indexes, no drift.
+
+Two deploy-order rules worth remembering, both learned the hard way:
+
+- **Code that upserts needs its unique index applied first.** `app/api/trades/import` and `app/api/tradovate/sync` both use `onConflict: 'user_id,tradovate_order_id'`. Postgres resolves that against a real unique index — without `trades_user_tradovate_order_id_key` it raises `42P10` and *every* import fails. Loud, not silent.
+- **Commented-out SQL stays commented out.** `restamp_commissions.sql` holds a disproven `UPDATE` kept only as a record. The drift checker strips `--` comments before parsing, so defusing a statement that way won't make it start demanding the change.
 
 ## Memory artifacts the user maintains
 

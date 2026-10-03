@@ -26,7 +26,17 @@
  *   - Auto-syncs: every future `ADD COLUMN IF NOT EXISTS` you write is checked
  *     automatically. No manifest to maintain.
  *
- * Exit codes: 0 = all expected columns present. 1 = drift found or config error.
+ * INDEXES
+ * -------
+ * Columns answer for themselves — asking PostgREST for a missing one returns
+ * 42703. Indexes have no such tell: they change the query plan, never the shape
+ * of a response, so an index-only migration could sit unapplied while every
+ * column probe came back green. Index checks therefore route through the
+ * `public.schema_index_names()` helper (supabase/add_schema_index_introspection.sql),
+ * compared against every CREATE INDEX parsed out of the migration files.
+ *
+ * Exit codes: 0 = all expected columns and indexes present. 1 = drift found or
+ * config error.
  */
 
 import { readFileSync, readdirSync } from 'node:fs'
@@ -141,6 +151,84 @@ async function probeColumn(baseUrl, key, table, column) {
   return { status: 'error', detail: body.message || `HTTP ${res.status}`, http: res.status }
 }
 
+// ── Migration parser: extract { index, table, file } for every CREATE INDEX ──
+// Unlike the column parser this runs over whole-file text, not line-by-line:
+// real statements wrap (`CREATE UNIQUE INDEX ... \n  ON trades (...)`).
+//
+// Comments are stripped first. Prose mentioning "CREATE INDEX" is already
+// harmless (the mandatory ON clause won't match), but a COMMENTED-OUT statement
+// parses perfectly — and would demand an index nobody intends to create, with
+// no way to tell from the output that the migration never meant to add it.
+function parseExpectedIndexes() {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+
+  const expected = [] // { index, table, file }
+  const seen = new Set()
+
+  const indexRe =
+    /create\s+(?:unique\s+)?index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)\s+on\s+(?:only\s+)?(?:public\.)?([a-z_][a-z0-9_]*)/gi
+
+  for (const file of files) {
+    const text = readFileSync(join(MIGRATIONS_DIR, file), 'utf8')
+      .split('\n')
+      .map((line) => line.replace(/--.*$/, ''))
+      .join('\n')
+
+    let m
+    indexRe.lastIndex = 0
+    while ((m = indexRe.exec(text)) !== null) {
+      const index = m[1].toLowerCase()
+      if (seen.has(index)) continue
+      seen.add(index)
+      expected.push({ index, table: m[2].toLowerCase(), file })
+    }
+  }
+
+  return expected
+}
+
+// ── Live probe: which indexes exist on the public schema? ──────────────────
+// Routes through the schema_index_names() helper; PostgREST can't read
+// pg_indexes directly. PGRST202 means the helper itself was never applied.
+async function fetchLiveIndexes(baseUrl, key) {
+  let res
+  try {
+    res = await fetch(`${baseUrl}/rest/v1/rpc/schema_index_names`, {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    })
+  } catch (err) {
+    return { status: 'network', detail: err.message }
+  }
+
+  if (res.ok) {
+    const names = await res.json()
+    return { status: 'ok', names: new Set(names.map((n) => String(n).toLowerCase())) }
+  }
+
+  let body = {}
+  try {
+    body = await res.json()
+  } catch {
+    /* non-JSON error body */
+  }
+  if (body.code === 'PGRST202' || res.status === 404) {
+    return { status: 'missing_function', detail: body.message || 'schema_index_names() not found' }
+  }
+  return { status: 'error', detail: body.message || `HTTP ${res.status}`, http: res.status }
+}
+
+// The file that defines schema_index_names(). Named here so a missing helper
+// reports like any other unapplied migration instead of a tooling error.
+const INTROSPECTOR_FILE = 'add_schema_index_introspection.sql'
+
 async function main() {
   const env = loadEnv()
   const baseUrl = env.NEXT_PUBLIC_SUPABASE_URL
@@ -156,14 +244,26 @@ async function main() {
   }
 
   const expected = parseExpectedColumns()
+  const expectedIndexes = parseExpectedIndexes()
   console.log(
     c.bold('Schema drift check') +
-      c.dim(` — ${expected.length} migration-added columns across the live DB\n`),
+      c.dim(
+        ` — ${expected.length} migration-added columns, ${expectedIndexes.length} indexes` +
+          ' across the live DB\n',
+      ),
   )
 
-  const results = await Promise.all(
-    expected.map(async (e) => ({ ...e, ...(await probeColumn(baseUrl, key, e.table, e.column)) })),
-  )
+  const [results, live] = await Promise.all([
+    Promise.all(
+      expected.map(async (e) => ({ ...e, ...(await probeColumn(baseUrl, key, e.table, e.column)) })),
+    ),
+    fetchLiveIndexes(baseUrl, key),
+  ])
+
+  // One round trip answers every index at once, so missing indexes are a plain
+  // set difference rather than a probe per name.
+  const missingIndexes =
+    live.status === 'ok' ? expectedIndexes.filter((e) => !live.names.has(e.index)) : []
 
   const missingColumns = results.filter((r) => r.status === 'missing_column')
   const missingTables = results.filter((r) => r.status === 'missing_table')
@@ -180,15 +280,44 @@ async function main() {
     console.log(`  ${label} ${table} ${c.dim(`(${rows.length - bad}/${rows.length})`)}`)
   }
 
-  if (missingColumns.length || missingTables.length || errors.length) {
+  // Indexes are schema-wide, not per-table — one line, same terse shape.
+  if (live.status === 'ok') {
+    const present = expectedIndexes.length - missingIndexes.length
+    const label = missingIndexes.length === 0 ? c.green('✓') : c.red('✗')
+    console.log(`  ${label} indexes ${c.dim(`(${present}/${expectedIndexes.length})`)}`)
+  } else {
+    console.log(`  ${c.yellow('?')} indexes ${c.dim('(not checked)')}`)
+  }
+
+  // An absent helper is drift like any other: unverified is not verified. It
+  // reports as a missing function rather than 8 missing indexes, because we
+  // genuinely don't know whether those indexes are there.
+  const introspectorMissing = live.status === 'missing_function'
+  const indexCheckFailed = live.status === 'error' || live.status === 'network'
+
+  if (
+    missingColumns.length ||
+    missingTables.length ||
+    errors.length ||
+    missingIndexes.length ||
+    introspectorMissing ||
+    indexCheckFailed
+  ) {
     console.log('\n' + c.red(c.bold('Drift detected — apply the missing migrations:\n')))
 
-    // Group missing columns by the .sql file that adds them.
+    // Group missing columns AND indexes by the .sql file that adds them, so a
+    // migration that adds both shows up once with every gap it would close.
     const byFile = {}
     for (const r of missingColumns) (byFile[r.file] ??= []).push(`${r.table}.${r.column}`)
+    for (const r of missingIndexes) (byFile[r.file] ??= []).push(`index ${r.index} on ${r.table}`)
+    if (introspectorMissing) {
+      ;(byFile[INTROSPECTOR_FILE] ??= []).push(
+        `function schema_index_names() — ${expectedIndexes.length} indexes left unverified`,
+      )
+    }
     for (const file of Object.keys(byFile).sort()) {
       console.log(`  ${c.yellow('→ supabase/' + file)}`)
-      for (const col of byFile[file]) console.log(`      ${c.red('missing')} ${col}`)
+      for (const item of byFile[file]) console.log(`      ${c.red('missing')} ${item}`)
     }
 
     for (const r of missingTables) {
@@ -199,6 +328,9 @@ async function main() {
         `  ${c.red('error')} ${r.table}.${r.column} — ${r.detail} ${c.dim(`(${r.file})`)}`,
       )
     }
+    if (indexCheckFailed) {
+      console.log(`  ${c.red('error')} index check — ${live.detail}`)
+    }
 
     console.log(
       '\n' +
@@ -207,7 +339,16 @@ async function main() {
     process.exit(1)
   }
 
-  console.log('\n' + c.green(c.bold(`✓ All ${ok.length} migration-added columns are live. No drift.`)))
+  // Only reachable with live.status === 'ok' — every other index status is drift.
+  console.log(
+    '\n' +
+      c.green(
+        c.bold(
+          `✓ All ${ok.length} migration-added columns and ${expectedIndexes.length} indexes` +
+            ' are live. No drift.',
+        ),
+      ),
+  )
   process.exit(0)
 }
 
