@@ -262,8 +262,12 @@ export default function JournalPage() {
         const err = await res.json()
         throw new Error(err.error || 'Import failed')
       }
-      const { inserted } = await res.json()
-      toast.success(`Imported ${inserted} trades!`)
+      const { inserted, skipped } = await res.json()
+      toast.success(
+        skipped > 0
+          ? `Imported ${inserted} trades (${skipped} already on file)`
+          : `Imported ${inserted} trades!`,
+      )
       setParsedTrades([])
       setTab('log')
       loadTrades()
