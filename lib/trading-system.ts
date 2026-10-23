@@ -3,6 +3,7 @@ export const SYSTEM_SETUPS = [
   'ORB Break',
   'TTM Squeeze',
   'AVWAP Bounce',
+  '21-EMA Bounce',
   'FVG Bounce',
   'VAH/VAL Bounce',
   'Fresh Supply/Demand',
@@ -55,9 +56,10 @@ Setup Priority (trade in this order, do not skip):
 1. 15-minute ORB (Break → Retest → 5m confirmation → Enter; OR must be ≥30% of prior day ATR)
 2. TTM Squeeze fire/pullback continuation (Tier 1 locations default; Tier 2 requires extra confirmation candle)
 3. AVWAP Bounce (requires 1H bias + price respecting AVWAP + 5m confirmation + room to target)
-4. FVG Bounce (location tool with confluence; must align with 1H bias + real trigger)
-5. VAH/VAL Bounce (volume-profile boundary; requires 1H bias + confluence + 5m trigger + room to POC or opposite VA — never trade the VAH/VAL alone)
-6. Divergence/Trendline Break (alert only, never standalone — must appear at meaningful level with 5m trigger)
+4. 21-EMA Bounce (trend pullback into the 21 EMA — the bias line itself; requires 1H bias + confluence + 5m confirmation off the EMA + room to target)
+5. FVG Bounce (location tool with confluence; must align with 1H bias + real trigger)
+6. VAH/VAL Bounce (volume-profile boundary; requires 1H bias + confluence + 5m trigger + room to POC or opposite VA — never trade the VAH/VAL alone)
+7. Divergence/Trendline Break (alert only, never standalone — must appear at meaningful level with 5m trigger)
 
 Entry Rule (must follow ALL steps): Break → Retest → Confirm → Enter
 BANNED entries: anticipation, blind-touch, chasing, entering on bubble/fire alone
@@ -68,7 +70,7 @@ Banned Locations: POC, mid-value, overlapping candles, obvious chop, signals fir
 
 Hard Operating Rule — must confirm ALL FIVE before every trade:
 1. Bias — 1H direction clear and aligned?
-2. Setup — which of the 6 setups is this?
+2. Setup — which of the 7 setups is this?
 3. Trigger — exact 5m signal?
 4. Location — approved location with room to target?
 5. Risk — stop and target defined?
@@ -111,6 +113,13 @@ export const PLAYBOOK_SETUPS = [
     entry_criteria: '1. 1H bias must be clear and aligned with the trade direction.\n2. Price approaches AVWAP with momentum slowing.\n3. 5m confirmation: hold candle, rejection wick, or reclaim-loss signal.\n4. Must have confluence (VWAP, prior swing, VAH/VAL, etc.).\n5. Must have clear room to target — do not trade into nearby major resistance.',
     exit_criteria: 'Target next AVWAP, VAH/VAL, or prior swing. Scale at 1R. Exit if 5m closes decisively through AVWAP.',
     tags: ['vwap', 'bounce', 'confluence'],
+  },
+  {
+    name: '21-EMA Bounce',
+    description: 'Trend pullback into the 21 EMA — the same line that sets the 1H bias. The most bias-aligned continuation entry in the system, and never a standalone signal.',
+    entry_criteria: '1. 1H bias clear — price above a rising 21 EMA for longs, below a falling one for shorts.\n2. Pullback into the 21 EMA on the 15m (touch or slight wick through — not a close beyond).\n3. 5m confirmation off the EMA: rejection wick, hold candle, or reclaim close.\n4. Confluence required (VWAP/AVWAP, prior swing, FireLines level, VAH/VAL) — never the EMA alone.\n5. Room to target: prior swing extreme in the trade direction.\nIf the 15m closes decisively beyond the EMA the setup is dead — that is a bias change, not a bounce. If the EMA is flat, there is no trend to pull back into: no trade.',
+    exit_criteria: 'Target the prior swing extreme in the trade direction, or the next major level (FireLines, VAH/VAL, PDH/PDL). Scale at 1R, trail the runner with 5m structure. Exit if a 5m closes back through the EMA against the trade.',
+    tags: ['ema', 'bounce', 'trend-continuation'],
   },
   {
     name: 'FVG Bounce',
