@@ -17,12 +17,47 @@ function addDays(iso: string, n: number): string {
   return isoDate(next)
 }
 
+// Every date decision below is anchored to America/Chicago, never the viewer's
+// clock. The Sunday job runs at 08:00 CT and files its brief under a CT week,
+// so reading local time would give two browsers different answers for the same
+// instant: an Eastern viewer would fall forward at 08:00 CT while the job is
+// still running, and a Pacific viewer would roll the week over at 19:00 the
+// evening before. The trading week is a CT week — so is this panel.
+const CT = 'America/Chicago'
+
+// en-CA renders as YYYY-MM-DD, which is already the wire format.
+function chicagoToday(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: CT,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+// hourCycle 'h23' rather than hour12:false — the latter reports midnight as 24
+// in some engines, which would read as "past the cutoff" every Sunday midnight.
+function chicagoHour(): number {
+  return Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: CT,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(new Date()),
+  )
+}
+
+// Weekday of a calendar date, read via UTC so it stays consistent with the
+// UTC-based addDays/isoDate helpers above and never re-enters local time.
+function weekdayOf(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1)).getUTCDay()
+}
+
 function currentMonday(): string {
-  const now = new Date()
-  const utc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
-  const day = utc.getUTCDay()
-  utc.setUTCDate(utc.getUTCDate() + (day === 0 ? -6 : 1 - day))
-  return isoDate(utc)
+  const today = chicagoToday()
+  const day = weekdayOf(today)
+  return addDays(today, day === 0 ? -6 : 1 - day)
 }
 
 // The page's week selector follows the ISO convention, so on Sunday it points
@@ -42,11 +77,10 @@ function currentMonday(): string {
 //
 // Only the page's own default is redirected — if a week was picked by hand,
 // it is honoured as-is.
-const BRIEF_READY_HOUR = 9 // local; job starts 08:00 CT and takes ~13 min
+const BRIEF_READY_HOUR = 9 // CT; job starts 08:00 CT and takes ~13 min
 
 function briefWeekFor(weekStart: string): string {
-  const now = new Date()
-  const ready = now.getDay() === 0 && now.getHours() >= BRIEF_READY_HOUR
+  const ready = weekdayOf(chicagoToday()) === 0 && chicagoHour() >= BRIEF_READY_HOUR
   return ready && weekStart === currentMonday() ? addDays(weekStart, 7) : weekStart
 }
 
