@@ -3,62 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Newspaper, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
-
-// Mirrors the page's own date helpers. Kept local so the panel is
-// self-contained and the page change stays a single line.
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
-function addDays(iso: string, n: number): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  const next = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1))
-  next.setUTCDate(next.getUTCDate() + n)
-  return isoDate(next)
-}
-
-// Every date decision below is anchored to America/Chicago, never the viewer's
-// clock. The Sunday job runs at 08:00 CT and files its brief under a CT week,
-// so reading local time would give two browsers different answers for the same
-// instant: an Eastern viewer would fall forward at 08:00 CT while the job is
-// still running, and a Pacific viewer would roll the week over at 19:00 the
-// evening before. The trading week is a CT week — so is this panel.
-const CT = 'America/Chicago'
-
-// en-CA renders as YYYY-MM-DD, which is already the wire format.
-function chicagoToday(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: CT,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date())
-}
-
-// hourCycle 'h23' rather than hour12:false — the latter reports midnight as 24
-// in some engines, which would read as "past the cutoff" every Sunday midnight.
-function chicagoHour(): number {
-  return Number(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: CT,
-      hour: '2-digit',
-      hourCycle: 'h23',
-    }).format(new Date()),
-  )
-}
-
-// Weekday of a calendar date, read via UTC so it stays consistent with the
-// UTC-based addDays/isoDate helpers above and never re-enters local time.
-function weekdayOf(iso: string): number {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1)).getUTCDay()
-}
-
-function currentMonday(): string {
-  const today = chicagoToday()
-  const day = weekdayOf(today)
-  return addDays(today, day === 0 ? -6 : 1 - day)
-}
+import { addDays, chicagoHour, chicagoToday, currentMonday, weekdayOf } from '@/lib/ct-week'
 
 // The page's week selector follows the ISO convention, so on Sunday it points
 // at the week that just ended. The Sunday 08:00 job files its brief under the

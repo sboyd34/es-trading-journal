@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Trade, WeeklyReview, DailySession } from '@/types'
 import { computeBehaviorStats } from '@/lib/behavior-stats'
+import { currentMonday } from '@/lib/ct-week'
 import BehaviorPatternsSection from '@/components/weekly-review/BehaviorPatternsSection'
 import MarketBriefPanel from '@/components/weekly-review/MarketBriefPanel'
 import { createClient } from '@/lib/supabase/client'
@@ -38,17 +39,6 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-// Returns Monday of the week containing today (local time).
-function thisWeekMonday(): string {
-  const now = new Date()
-  // Convert to UTC date-only first so we never drift across timezone boundaries.
-  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate()
-  const utc = new Date(Date.UTC(y, m, d))
-  const day = utc.getUTCDay() // 0 Sun, 1 Mon, ... 6 Sat
-  const diff = day === 0 ? -6 : 1 - day // shift to Monday
-  return isoDate(addDays(utc, diff))
-}
-
 function formatWeekRange(start: string, end: string): string {
   const s = dateOnly(start)
   const e = dateOnly(end)
@@ -60,7 +50,7 @@ function formatWeekRange(start: string, end: string): string {
 
 export default function WeeklyReviewPage() {
   const supabase = createClient()
-  const [weekStart, setWeekStart] = useState(thisWeekMonday())
+  const [weekStart, setWeekStart] = useState(currentMonday())
   const [review, setReview] = useState<WeeklyReview | null>(null)
   const [weekTrades, setWeekTrades] = useState<Trade[]>([])
   const [weekSessions, setWeekSessions] = useState<DailySession[]>([])
@@ -248,7 +238,7 @@ export default function WeeklyReviewPage() {
             <ChevronRight className="h-4 w-4" />
           </button>
           <button
-            onClick={() => setWeekStart(thisWeekMonday())}
+            onClick={() => setWeekStart(currentMonday())}
             className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition"
           >
             This Week
