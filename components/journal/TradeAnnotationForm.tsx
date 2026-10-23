@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Trade, ApexAccount } from '@/types'
 import { cn, getMoodEmoji, formatCurrency } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -47,6 +47,9 @@ export default function TradeAnnotationForm({
   const [stopLoss, setStopLoss] = useState(initialStopLoss ?? trade.stop_loss?.toString() ?? '')
   const [target, setTarget] = useState(initialTarget ?? trade.target?.toString() ?? '')
   const [atrAtEntry, setAtrAtEntry] = useState(trade.atr_at_entry?.toString() || '')
+  // Tri-state: null = not recorded. Never defaults to false — an unanswered
+  // trade stays out of the TP1 hit rate instead of counting as a miss.
+  const [firstTargetHit, setFirstTargetHit] = useState<boolean | null>(trade.first_target_hit ?? null)
   const [notes, setNotes] = useState(trade.notes || '')
   const [reflection, setReflection] = useState(trade.reflection || '')
   const [tags, setTags] = useState(() => {
@@ -88,6 +91,40 @@ export default function TradeAnnotationForm({
     })()
     return () => { cancelled = true }
   }, [supabase])
+
+  // ── Trade plan math ──────────────────────────────────────────────────────
+  // Derives planned R:R and plan-vs-actual from the stop/target price levels.
+  // Returns null until a usable stop is entered — the panel stays quiet.
+  const plan = useMemo(() => {
+    const sl = parseFloat(stopLoss)
+    const tp = parseFloat(target)
+    const { entry_price: entry, exit_price: exit } = trade
+    const dir = trade.direction === 'long' ? 1 : -1
+
+    if (!Number.isFinite(sl)) return null
+    const riskPts = Math.abs(entry - sl)
+    if (riskPts < 0.01) return null
+
+    // A stop must sit on the losing side of entry, a target on the winning side.
+    const stopInverted = dir === 1 ? sl >= entry : sl <= entry
+    const hasTarget = Number.isFinite(tp)
+    const targetInverted = hasTarget && (dir === 1 ? tp <= entry : tp >= entry)
+
+    const rewardPts = hasTarget ? Math.abs(tp - entry) : null
+    const rr = rewardPts !== null ? rewardPts / riskPts : null
+    const realizedR = ((exit - entry) * dir) / riskPts
+
+    // How the trade actually resolved against its own plan.
+    let outcome: 'target' | 'stopped' | 'early' | 'runner' = 'early'
+    if (realizedR <= -0.98) outcome = 'stopped'
+    else if (rr !== null && realizedR >= rr * 1.02) outcome = 'runner'
+    else if (rr !== null && realizedR >= rr * 0.98) outcome = 'target'
+
+    // Fraction of the planned move actually captured (winners only).
+    const capture = rr !== null && rr > 0 && realizedR > 0 ? realizedR / rr : null
+
+    return { riskPts, rewardPts, rr, realizedR, outcome, capture, stopInverted, targetInverted }
+  }, [stopLoss, target, trade])
 
   // ── Voice recording ──────────────────────────────────────────────────────
 
@@ -184,6 +221,23 @@ export default function TradeAnnotationForm({
   // ── Save ─────────────────────────────────────────────────────────────────
 
   async function handleSave() {
+    // A graded trade without a stop can't be scored in R — block it. Off-system
+    // trades are discipline lapses, not planned executions, so they're exempt.
+    if (!offSystem) {
+      if (!stopLoss.trim()) {
+        toast.error('Stop loss is required — without it this trade has no R value')
+        return
+      }
+      if (plan?.stopInverted) {
+        toast.error(`Stop is on the wrong side of entry for a ${trade.direction} trade`)
+        return
+      }
+      if (plan?.targetInverted) {
+        toast.error(`Target is on the wrong side of entry for a ${trade.direction} trade`)
+        return
+      }
+    }
+
     setSaving(true)
     try {
       const res = await fetch(`/api/trades/${trade.id}`, {
@@ -198,6 +252,7 @@ export default function TradeAnnotationForm({
           stop_loss: offSystem ? null : (stopLoss ? parseFloat(stopLoss) : null),
           target: offSystem ? null : (target ? parseFloat(target) : null),
           atr_at_entry: offSystem ? null : (atrAtEntry ? parseFloat(atrAtEntry) : null),
+          first_target_hit: offSystem ? null : firstTargetHit,
           notes: notes || null,
           reflection: reflection || null,
           tags: offSystem ? [] : (tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : []),
@@ -264,6 +319,182 @@ export default function TradeAnnotationForm({
           </p>
         </div>
       </div>
+
+      {/* Trade plan — stop/target drive every R-multiple stat downstream */}
+      {!offSystem && (
+        <div className={cn(
+          'rounded-lg border p-3',
+          stopLoss.trim() ? 'border-gray-700/60 bg-gray-900/40' : 'border-amber-500/40 bg-amber-500/5'
+        )}>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-200">
+              Trade Plan <span className="text-amber-400">*</span>
+            </label>
+            {!stopLoss.trim() && (
+              <span className="text-xs text-amber-400">Stop required</span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss</label>
+              <input
+                type="number"
+                step="0.25"
+                value={stopLoss}
+                onChange={(e) => setStopLoss(e.target.value)}
+                placeholder="Price level"
+                className={cn(
+                  'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  plan?.stopInverted ? 'border-red-500/70' : 'border-gray-700'
+                )}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Target</label>
+              <input
+                type="number"
+                step="0.25"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder="Price level"
+                className={cn(
+                  'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  plan?.targetInverted ? 'border-red-500/70' : 'border-gray-700'
+                )}
+              />
+            </div>
+          </div>
+
+          {plan?.stopInverted && (
+            <p className="mt-2 text-xs text-red-400">
+              Stop must be {trade.direction === 'long' ? 'below' : 'above'} entry ({trade.entry_price.toFixed(2)}) on a {trade.direction}.
+            </p>
+          )}
+          {plan?.targetInverted && (
+            <p className="mt-2 text-xs text-red-400">
+              Target must be {trade.direction === 'long' ? 'above' : 'below'} entry ({trade.entry_price.toFixed(2)}) on a {trade.direction}.
+            </p>
+          )}
+
+          {/* First contract at TP — the bracket fill the journal can't see.
+              Three-way so an unanswered trade stays null, not a false "No". */}
+          <div className="mt-3 pt-3 border-t border-gray-700/50 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-gray-300">First contract hit TP?</p>
+              <p className="text-[11px] text-gray-500">Did leg 1 reach take profit before you closed or got stopped?</p>
+            </div>
+            <div className="flex gap-1.5 shrink-0">
+              {([
+                { label: 'Yes', value: true, on: 'border-emerald-500 bg-emerald-500/20 text-emerald-400' },
+                { label: 'No', value: false, on: 'border-red-500 bg-red-500/20 text-red-400' },
+              ] as const).map(({ label, value, on }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setFirstTargetHit(firstTargetHit === value ? null : value)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors',
+                    firstTargetHit === value ? on : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Derived readout — the payoff for filling the fields in */}
+          {plan && !plan.stopInverted && !plan.targetInverted && (
+            <div className="mt-3 pt-3 border-t border-gray-700/50">
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">Risk</p>
+                  <p className="text-sm font-semibold text-red-400">{plan.riskPts.toFixed(2)} pt</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">Reward</p>
+                  <p className="text-sm font-semibold text-emerald-400">
+                    {plan.rewardPts !== null ? `${plan.rewardPts.toFixed(2)} pt` : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">Planned R:R</p>
+                  <p className={cn(
+                    'text-sm font-bold',
+                    plan.rr === null ? 'text-gray-500'
+                      : plan.rr >= 1.5 ? 'text-emerald-400'
+                      : plan.rr >= 1 ? 'text-yellow-400'
+                      : 'text-red-400'
+                  )}>
+                    {plan.rr !== null ? `${plan.rr.toFixed(2)}R` : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">Actual</p>
+                  <p className={cn(
+                    'text-sm font-bold',
+                    plan.realizedR >= 0 ? 'text-emerald-400' : 'text-red-400'
+                  )}>
+                    {plan.realizedR >= 0 ? '+' : ''}{plan.realizedR.toFixed(2)}R
+                  </p>
+                </div>
+              </div>
+
+              {/* Break-even win rate this R:R demands — the number that matters */}
+              {plan.rr !== null && (
+                <p className="mt-2.5 text-xs text-gray-400 text-center">
+                  Needs a{' '}
+                  <span className={cn(
+                    'font-semibold',
+                    1 / (1 + plan.rr) > 0.6 ? 'text-red-400' : 'text-emerald-400'
+                  )}>
+                    {(100 / (1 + plan.rr)).toFixed(0)}% win rate
+                  </span>{' '}
+                  to break even
+                </p>
+              )}
+
+              {plan.rr !== null && plan.rr < 1 && (
+                <p className="mt-2 text-xs text-red-400 text-center">
+                  Risking more than you stand to make — this needs to be right more than half the time.
+                </p>
+              )}
+
+              {/* Plan vs. actual — surfaces early exits, the giveback problem */}
+              <div className="mt-2.5 flex justify-center">
+                {plan.outcome === 'target' && (
+                  <span className="text-xs px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-300">
+                    ✓ Hit target as planned
+                  </span>
+                )}
+                {plan.outcome === 'stopped' && (
+                  <span className="text-xs px-2 py-1 rounded-md bg-red-500/15 text-red-300">
+                    Stopped out — full 1R loss
+                  </span>
+                )}
+                {plan.outcome === 'runner' && (
+                  <span className="text-xs px-2 py-1 rounded-md bg-blue-500/15 text-blue-300">
+                    Ran past target (+{(plan.realizedR - (plan.rr ?? 0)).toFixed(2)}R beyond plan)
+                  </span>
+                )}
+                {plan.outcome === 'early' && (
+                  <span className={cn(
+                    'text-xs px-2 py-1 rounded-md',
+                    plan.capture !== null && plan.capture < 0.5
+                      ? 'bg-amber-500/15 text-amber-300'
+                      : 'bg-gray-700/50 text-gray-300'
+                  )}>
+                    {plan.capture !== null
+                      ? `Exited early — captured ${(plan.capture * 100).toFixed(0)}% of the planned move`
+                      : 'Exited before stop or target'}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Revenge trade warning */}
       {isRevengeTrade && (
@@ -367,7 +598,7 @@ export default function TradeAnnotationForm({
           <div className="flex-1">
             <p className="text-sm font-medium text-gray-200">Off-system trade (F)</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Use when the trade wasn&apos;t one of the 6 setups — a discipline lapse, not a graded execution.
+              Use when the trade wasn&apos;t one of the 7 setups — a discipline lapse, not a graded execution.
             </p>
           </div>
         </label>
@@ -457,28 +688,6 @@ export default function TradeAnnotationForm({
               value={atrAtEntry}
               onChange={(e) => setAtrAtEntry(e.target.value)}
               placeholder="0.00"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss</label>
-            <input
-              type="number"
-              step="0.25"
-              value={stopLoss}
-              onChange={(e) => setStopLoss(e.target.value)}
-              placeholder="Price level"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Target</label>
-            <input
-              type="number"
-              step="0.25"
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              placeholder="Price level"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
