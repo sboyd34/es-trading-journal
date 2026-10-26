@@ -46,10 +46,13 @@
 # range, so journaling the predicted/actual pair is free. Trust your own read
 # over the EXPANSION/ROTATION flag until a few weeks of that data exists.
 #
-# Known cosmetic carry-over: the locked IB label stays visible into the
-# evening (it reflects the most recent completed IB, which is legitimately
-# worth referencing overnight) and self-clears at midnight, when
-# SecondsTillTime(ibEnd) flips positive again.
+# The locked IB label stays visible past 09:30 and through the evening
+# Globex session -- the most recent completed IB is worth referencing
+# overnight -- and self-clears after midnight, when SecondsTillTime(ibEnd)
+# flips positive again. v2 shipped that carry UNLABELED and called it
+# cosmetic; it was not. See the ibYMD block below: the label now stamps
+# the session date it measured, so a Friday IB can never pass for a live
+# one on a Sunday-evening chart.
 
 declare upper;
 
@@ -113,6 +116,32 @@ def ibCount = CompoundValue(1, if ibOpen then ibCount[1] + 1 else ibCount[1], 0)
 def ibReady  = ibCount >= 1;
 def ibLocked = ibReady and ibDone;
 def ibRange  = ibHigh - ibLow;
+
+# ── Which session does that IB belong to? ───────────────────────────
+# ibDone is `past 09:30 and past 08:30`, and SecondsFromTime is
+# CALENDAR-day relative (Liquidity_Map_v4:278 has to write the overnight
+# window as an `or` for exactly this reason). So ibDone is true on every
+# bar after 09:30 of every calendar day -- through the 17:00 Globex roll,
+# past midnight, all weekend, holidays included. ibHigh/ibLow carry
+# forward untouched across all of it.
+#
+# That carry is intentional and still useful, but v2 shipped it unlabeled:
+# on a Sunday-evening chart a Friday IB rendered identically to a live
+# one, beside live price. The values were never malformed -- they were
+# unattributed, which is indistinguishable from wrong. Latch the date at
+# ibOpen so the label always names the session it measured.
+#
+# GetYYYYMMDD() is the only date built-in proven in a third-party study
+# on this install (supply_demand_zones_v2:335, ES_RTH..CONFLUENCE:98), so
+# MM/DD is derived from it with Floor and subtraction. GetMonth() and
+# GetDayOfMonth() appear in zero third-party files here, which per the
+# gotchas process lesson makes them unverified, not available.
+def ibYMD = CompoundValue(1,
+                if ibOpen then GetYYYYMMDD() else ibYMD[1], GetYYYYMMDD());
+
+def ibMMDD  = ibYMD - Floor(ibYMD / 10000) * 10000;
+def ibMonth = Floor(ibMMDD / 100);
+def ibDay   = ibMMDD - ibMonth * 100;
 
 # ── Average RTH range: the denominator ──────────────────────────────
 def inRTH   = SecondsFromTime(rthStart) >= 0 and SecondsTillTime(rthEnd) > 0;
@@ -179,7 +208,8 @@ AddLabel(aggOK and inIB, "  IB FORMING  ", Color.YELLOW);
 # NumberFormat.NO_DECIMALS to ask for one. Each concatenation also leads
 # with a string literal, so the first + is never ambiguous with arithmetic.
 AddLabel(aggOK and ibLocked,
-    "  IB " + AsText(ibLow) + "-" + AsText(ibHigh) +
+    "  IB " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) + "  " +
+    AsText(ibLow) + "-" + AsText(ibHigh) +
     " (" + Round(ibRange, 0) + " pts)  ",
     Color.WHITE);
 
