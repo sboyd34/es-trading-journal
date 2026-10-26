@@ -54,9 +54,22 @@
 # the session date it measured, so a Friday IB can never pass for a live
 # one on a Sunday-evening chart.
 
+# ── THESE FOUR ARE IN YOUR CHART'S DISPLAY TIMEZONE, NOT CENTRAL ────
+# SecondsFromTime() has no idea what Central is; it resolves HHMM against
+# whatever the chart is set to display, and ThinkScript cannot read that
+# setting back. The defaults below are correct ONLY on a chart displaying
+# Central. On an Eastern chart they slice the hour before the cash open.
+#
+#   chart displays CT -> 0830 / 0930 / 0830 / 1500   (these defaults)
+#   chart displays ET -> 0930 / 1030 / 0930 / 1600
+#
+# Recommended: set the CHART to Central instead of editing these. Every
+# other study here (FireLines, Liquidity Map) also defaults to 0830 CT, and
+# the journal's whole time-window vocabulary is CT -- one chart setting makes
+# all of them right at once, instead of four inputs per study.
 declare upper;
 
-input ibStart   = 0830;   # Central Time -- RTH open on /ES
+input ibStart   = 0830;   # cash open, CHART TIME (see block above)
 input ibEnd     = 0930;   # 60-minute IB. Change both together.
 
 input rthStart  = 0830;   # RTH session bounds -- the range denominator
@@ -199,7 +212,21 @@ AddLabel(!aggOK,
     "  IB TRACKER OFF - chart period too coarse; use 15m or faster  ",
     Color.ORANGE);
 
-AddLabel(aggOK and inIB, "  IB FORMING  ", Color.YELLOW);
+# The window is echoed on this label on purpose. SecondsFromTime() resolves
+# HHMM against the CHART'S DISPLAY TIMEZONE (gotchas #2), which ThinkScript
+# gives no way to read back. A chart set to Eastern silently slices 07:30-08:30
+# CT from ibStart = 0830 -- the hour BEFORE the cash open -- and renders a
+# perfectly plausible ~17 pt IB from it. That is what happened on 2026-10-26:
+# the label read 7675.50-7692.75 when the real 08:30-09:30 CT IB was
+# 7677.00-7719.50 (42.5 pts), and rthStart/rthEnd were off by the same hour,
+# so the ratio was wrong in BOTH terms.
+#
+# Printing raw HHMM is deliberate: AsTime() appears in zero third-party
+# studies on this install, so it is unverified, not available. 830 is uglier
+# than 8:30 and cannot fail.
+AddLabel(aggOK and inIB,
+    "  IB FORMING " + Round(ibStart, 0) + "-" + Round(ibEnd, 0) +
+    " chart time  ", Color.YELLOW);
 
 # AsText() for the two price LEVELS only -- they are genuinely fractional
 # (quarter-point ticks), which is the one case AsText is right for. Every
