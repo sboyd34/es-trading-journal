@@ -228,6 +228,23 @@ AddLabel(aggOK and inIB,
     "  IB FORMING " + Round(ibStart, 0) + "-" + Round(ibEnd, 0) +
     " chart time  ", Color.YELLOW);
 
+# The window is echoed HERE too, not only on the forming label above.
+#
+# The forming label is gated on `inIB`, so it vanishes the moment the IB
+# closes -- which means from 09:30 until midnight, the only label on the
+# chart is this one, and it reported two prices with no statement of what
+# window produced them. That is the same unattributed-value defect the date
+# stamp was added to fix, one field short: the label named its SESSION but
+# not its WINDOW, so an Eastern chart's 07:30-08:30 CT slice rendered as
+# "IB 10/26 7675.50-7692.75" -- correct-looking, correctly dated, and an
+# hour early. Costly in practice: it took a yfinance scan of the real tape
+# to recover a fact the label already had in hand and declined to print.
+#
+# Reads: IB 10/26 [830-930] 7677.00-7719.50 (43 pts)
+# The bracketed pair is raw chart-time HHMM. If it says [830-930] and the
+# prices are not the 08:30-09:30 CT prices, the chart is not on Central --
+# no external data needed to tell.
+#
 # AsText() for the two price LEVELS only -- they are genuinely fractional
 # (quarter-point ticks), which is the one case AsText is right for. Every
 # other number here concatenates Round(x, 0): AsText always prints two
@@ -235,7 +252,8 @@ AddLabel(aggOK and inIB,
 # NumberFormat.NO_DECIMALS to ask for one. Each concatenation also leads
 # with a string literal, so the first + is never ambiguous with arithmetic.
 AddLabel(aggOK and ibLocked,
-    "  IB " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) + "  " +
+    "  IB " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) +
+    " [" + Round(ibStart, 0) + "-" + Round(ibEnd, 0) + "]  " +
     AsText(ibLow) + "-" + AsText(ibHigh) +
     " (" + Round(ibRange, 0) + " pts)  ",
     Color.WHITE);
