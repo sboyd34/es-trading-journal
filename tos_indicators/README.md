@@ -10,6 +10,7 @@ TOS reads its scripts from the user's study editor, not the filesystem. The file
 
 - `firelines.ts` — FireLines indicator (daily + weekly pivot projections, confluence detection with per-level labels)
 - `liquidity_map.ts` — Liquidity Map indicator (ICT-style buy-side / sell-side liquidity tracking)
+- `initial_balance_tracker.ts` — Initial Balance high/low, sized against the average RTH range to flag day type (labels only, no plots)
 
 ## Updating
 
