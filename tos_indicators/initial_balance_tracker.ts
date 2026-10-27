@@ -48,45 +48,58 @@
 #
 # The locked IB label stays visible past 09:30 and through the evening
 # Globex session -- the most recent completed IB is worth referencing
-# overnight -- and self-clears after midnight, when SecondsTillTime(nyIBEnd)
+# overnight -- and self-clears after midnight, when SecondsFromTime(ibEndCT)
 # flips positive again. v2 shipped that carry UNLABELED and called it
 # cosmetic; it was not. See the ibYMD block below: the label now stamps
 # the session date it measured, so a Friday IB can never pass for a live
 # one on a Sunday-evening chart.
 
-# ── THESE FOUR ARE NEW YORK (EASTERN) CLOCK TIMES ───────────────────
-# Not Central, and NOT the chart's display timezone. That second claim was
-# the long-running bug in this file, and it was wrong twice over.
+# ── EVERY TIME IN THIS STUDY IS CENTRAL ─────────────────────────────
+# You type Central, you read Central, the labels print Central. The one-hour
+# correction this install needs lives in exactly one place -- engineOffsetHours
+# -- and nothing else in the file knows about it.
 #
-# MEASURED on this install, 10/26/26, chart axis confirmed Central:
+# THE PROBLEM. SecondsFromTime() does NOT resolve HHMM against the chart's
+# display timezone. That was the old claim in this file (and in the gotchas
+# notes) and it is false on this install. Measured 10/26/26:
 #
-#   SecondsFromTime(0830) fires when the chart reads 07:30 CT.
+#   SecondsFromTime(0830) returns 0 when the chart reads 07:30 CT.
 #
-# Three independent confirmations, all agreeing on a one-hour lead:
+# Three independent confirmations of the one-hour lead:
 #   - IB  with 0830/0930 printed 17.25 pts = exactly 07:30-08:30 CT
 #   - RTH with 0830/1500 printed 64.00 pts = exactly 07:30-14:00 CT
-#   - a third-party study's RTH label shifted by the same hour, while its
-#     Globex-anchored DayR label was correct -- so the offset is platform-
-#     wide and hits wall-clock windows only, not this study's logic.
+#   - a third-party study's wall-clock RTH label shifted by the same hour
+#     while its Globex-anchored DayR label stayed correct -- so the offset is
+#     platform-wide, hits wall-clock windows only, and is not our bug.
 #
-# The system timezone is CST and the chart axis is Central (verified by
-# matching the 3:45 PM bar's full OHLC against known CT bars -- all four
-# values matched 15:45 CT, none matched 14:45 CT). The chart renderer and
-# the script engine are reading different clocks, and ThinkScript cannot
-# read either one back to compensate. So stop trying to: the engine wants
-# Eastern, so these inputs are DECLARED in Eastern.
+# The system timezone is CST and the chart axis is provably Central (the
+# 3:45 PM bar's full OHLC matched 15:45 CT on all four values and 14:45 CT on
+# none). The chart renderer and the script engine are reading different clocks
+# and ThinkScript cannot read either one back to compensate for it.
 #
-# That turns out to be the honest unit anyway. The IB is the first hour of
-# the NEW YORK session, and New York opens at 9:30 -- so 0930/1030 is the
-# window written in the same numbers anyone would say it out loud in. The
-# old 0830 default was a Central translation of an Eastern fact, and the
-# translation is what broke.
+# THE FIX, AND WHY IT IS NOT WHAT YOU'D EXPECT. The obvious move is to shift
+# the input -- hand SecondsFromTime(0930) and let it land on 08:30 CT. Do not
+# do that. SecondsFromTime's parameter has never been proven to accept a
+# computed value on this install, and gotchas #6/#8a establish that
+# constant-ness is declared PER FUNCTION ("assume constant-required until
+# proven otherwise"). Highest/Lowest reject a dynamic length outright, and
+# the failure mode for this class of mistake is a SILENTLY BLANK study, which
+# is indistinguishable from the save-vs-apply trap.
 #
-# DO NOT "fix" these back to 0830 to match the Central chart axis. The axis
-# is not what SecondsFromTime reads. To re-verify, flip showWindow = yes and
-# read the bracket on the locked label: if it says [930-1030] and the prices
-# are not the 08:30-09:30 CT prices, THEN the offset has changed and these
-# need revisiting. Until then, leave them alone.
+# So the HHMM arguments below stay plain `input` literals -- the exact form
+# proven to work -- and the correction moves to the OTHER side of the
+# comparison. SecondsFromTime returns seconds elapsed since its argument, so
+# "08:30 CT" is simply "3600 seconds past the engine's 0830":
+#
+#   def inIB = SecondsFromTime(ibStartCT) >= shiftSec and ...
+#
+# shiftSec is a def, but it is only ever compared against a number. No
+# constant-ness exposure anywhere.
+#
+# Both window ends now use SecondsFromTime rather than mixing in
+# SecondsTillTime, because SecondsTillTime(t) == -SecondsFromTime(t) and the
+# shift has to apply identically to both edges. One function, one sign
+# convention, one offset.
 #
 # Renamed from ibStart/ibEnd/rthStart/rthEnd deliberately. TOS persists input
 # values per applied study instance and re-pasting the source does NOT reset
@@ -95,11 +108,22 @@
 # so the new defaults actually take effect on re-apply.
 declare upper;
 
-input nyIBStart  = 0930;   # NY cash open, EASTERN (see block above)
-input nyIBEnd    = 1030;   # 60-minute IB. Change both together.
+input ibStartCT  = 0830;   # cash open, CENTRAL. The first 60 min of NY.
+input ibEndCT    = 0930;   # Change both together.
 
-input nyRTHStart = 0930;   # RTH session bounds -- the range denominator
-input nyRTHEnd   = 1600;
+input rthStartCT = 0830;   # RTH session bounds -- the range denominator
+input rthEndCT   = 1500;
+
+# The single knob that absorbs the renderer/engine clock split. 1 is the
+# MEASURED value on this install, not a guess. Central and Eastern observe
+# DST on the same dates, so the gap is exactly one hour year-round -- this
+# does not need seasonal adjustment.
+#
+# Set to 0 if SecondsFromTime ever starts resolving Central (e.g. a TOS
+# update, or a platform timezone setting changing underneath this). The tell
+# that it has: flip showWindow = yes, and if the bracket's Central window no
+# longer matches the Central prices on the tape, this number is stale.
+input engineOffsetHours = 1;
 
 input rangeLength = 14;   # sessions in the average RTH range (Wilder)
 
@@ -111,7 +135,7 @@ input showRealizedRange = yes;
 
 # Off by default -- the clean label is the one worth staring at all session.
 # Flip to yes only when a price looks wrong. It appends the window this study
-# was HANDED, in NY/Eastern, which separates two failures that look identical
+# was HANDED, in Central, which separates two failures that look identical
 # on a clean label: a stale persisted input (bracket reads the old window) from
 # a miscomputed range (bracket is right, prices are not). Finding that out the
 # hard way took three fix attempts and a scan of the real tape, so the echo
@@ -133,16 +157,20 @@ def aggOK = GetAggregationPeriod() <= maxAggregation;
 # Seeded on the first bar of the WINDOW, not on the date roll.
 #
 # v1 reset on `GetYYYYMMDD() != GetYYYYMMDD()[1]`, reasoning that the
-# electronic session rolls the trading date well before nyIBStart. True with
+# electronic session rolls the trading date well before ibStartCT. True with
 # Extended Hours ON. With ETH OFF the first bar of the chart day IS 08:30, so
 # newDay and inIB fired on the same bar, the reset branch won, ibHigh went
 # NaN, and the window seeded from the SECOND bar -- discarding the opening
 # bar, which is usually where the IB extreme lives. Seeding on the window
 # edge is correct with ETH either way, which also retires this study's
 # dependence on the ETH toggle.
-def inIB   = SecondsFromTime(nyIBStart) >= 0 and SecondsTillTime(nyIBEnd) > 0;
+def shiftSec = engineOffsetHours * 3600;
+
+def inIB   = SecondsFromTime(ibStartCT) >= shiftSec
+         and SecondsFromTime(ibEndCT)   <  shiftSec;
 def ibOpen = inIB and !inIB[1];
-def ibDone = SecondsTillTime(nyIBEnd) <= 0 and SecondsFromTime(nyIBStart) >= 0;
+def ibDone = SecondsFromTime(ibEndCT)   >= shiftSec
+         and SecondsFromTime(ibStartCT) >= shiftSec;
 
 # CompoundValue-seeded rather than NaN-initialised. Every branch below is
 # self-referential, so a NaN arriving on bar 1 could never be flushed back
@@ -192,9 +220,11 @@ def ibMonth = Floor(ibMMDD / 100);
 def ibDay   = ibMMDD - ibMonth * 100;
 
 # ── Average RTH range: the denominator ──────────────────────────────
-def inRTH   = SecondsFromTime(nyRTHStart) >= 0 and SecondsTillTime(nyRTHEnd) > 0;
+def inRTH   = SecondsFromTime(rthStartCT) >= shiftSec
+          and SecondsFromTime(rthEndCT)   <  shiftSec;
 def rthOpen = inRTH and !inRTH[1];
-def rthDone = SecondsTillTime(nyRTHEnd) <= 0 and SecondsFromTime(nyRTHStart) >= 0;
+def rthDone = SecondsFromTime(rthEndCT)   >= shiftSec
+          and SecondsFromTime(rthStartCT) >= shiftSec;
 
 def rthHigh = CompoundValue(1,
                   if rthOpen then high
@@ -273,8 +303,8 @@ AddLabel(aggOK and inIB and !showWindow,
     "  IB FORMING  ", Color.YELLOW);
 
 AddLabel(aggOK and inIB and showWindow,
-    "  IB FORMING " + Round(nyIBStart, 0) + "-" + Round(nyIBEnd, 0) +
-    " NY  ", Color.YELLOW);
+    "  IB FORMING " + Round(ibStartCT, 0) + "-" + Round(ibEndCT, 0) +
+    " CT  ", Color.YELLOW);
 
 # The window is echoed HERE too, not only on the forming label above.
 #
@@ -290,7 +320,7 @@ AddLabel(aggOK and inIB and showWindow,
 #
 # Reads: IB 10/26  7677.00-7719.50 (43 pts)
 # ...and with showWindow = yes, the window is spliced in:
-#         IB 10/26 [930-1030] 7677.00-7719.50 (43 pts)
+#         IB 10/26 [830-930] 7677.00-7719.50 (43 pts)
 #
 # The DATE stamp is unconditional and stays that way. It is not decoration:
 # this label survives past the IB close and through the evening Globex
@@ -312,7 +342,7 @@ AddLabel(aggOK and ibLocked and !showWindow,
 
 AddLabel(aggOK and ibLocked and showWindow,
     "  IB " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) +
-    " [" + Round(nyIBStart, 0) + "-" + Round(nyIBEnd, 0) + "]  " +
+    " [" + Round(ibStartCT, 0) + "-" + Round(ibEndCT, 0) + "]  " +
     AsText(ibLow) + "-" + AsText(ibHigh) +
     " (" + Round(ibRange, 0) + " pts)  ",
     Color.WHITE);
