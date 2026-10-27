@@ -46,9 +46,32 @@ input showEqualClusterLabels  = yes;
 input showCornerSummary       = yes;
 
 # ── Session gating (default OFF for night trading) ───────────────
+# Both HHMM values are CENTRAL. See engineOffsetHours below -- they are not
+# fed to SecondsFromTime at face value, because on this install
+# SecondsFromTime(0830) fires when the chart reads 07:30 CT.
 input sessionGating           = no;
 input sessionStartHHMM        = 0830;
 input sessionEndHHMM          = 1500;
+
+# ── Renderer/engine clock split ──────────────────────────────────
+# MEASURED at 1 hour on this install, 10/26/26: the chart axis is Central
+# (confirmed by matching a bar's full OHLC against known CT bars) while
+# SecondsFromTime resolves an hour earlier. System timezone is CST, so this
+# is a platform split between the chart renderer and the script engine, and
+# ThinkScript cannot read either clock back to compensate automatically.
+#
+# Every wall-clock comparison below adds shiftSec rather than shifting the
+# HHMM argument. Per gotchas #6/#8a, constant-ness is declared per function
+# and the standing rule is "assume constant-required until proven otherwise";
+# SecondsFromTime has never been proven to accept a computed parameter here,
+# and that class of mistake renders a SILENTLY BLANK study. So the arguments
+# stay literal and the offset lives on the right-hand side, where it is only
+# ever a number compared against a number.
+#
+# Central and Eastern share DST dates, so one hour holds year-round. Set to
+# 0 if SecondsFromTime ever starts resolving Central.
+input engineOffsetHours       = 1;
+def shiftSec = engineOffsetHours * 3600;
 
 # ── ATR (ticker-agnostic distance threshold) ─────────────────────
 def atr      = WildersAverage(TrueRange(high(period = atrAggregation),
@@ -59,8 +82,12 @@ def equalThr    = equalATRMult    * atr;
 def approachThr = approachATRMult * atr;
 
 # ── Session window ───────────────────────────────────────────────
+# SecondsTillTime(t) == -SecondsFromTime(t), so the end test is rewritten in
+# SecondsFromTime terms. One function and one sign convention means the shift
+# applies identically to both edges instead of needing opposite signs.
 def inSession = if sessionGating
-                then SecondsFromTime(sessionStartHHMM) >= 0 and SecondsTillTime(sessionEndHHMM) >= 0
+                then SecondsFromTime(sessionStartHHMM) >= shiftSec
+                 and SecondsFromTime(sessionEndHHMM)   <= shiftSec
                 else yes;
 
 def lastBar = BarNumber() == HighestAll(BarNumber());
@@ -78,8 +105,13 @@ def PDL = low(period  = AggregationPeriod.DAY)[1];
 def PWH = high(period = AggregationPeriod.WEEK)[1];
 def PWL = low(period  = AggregationPeriod.WEEK)[1];
 
-def isOvernightBar = SecondsFromTime(0830) < 0 and SecondsFromTime(1700) >= 0;
-def isNewSession   = SecondsFromTime(0830) >= 0 and SecondsFromTime(0830)[1] < 0;
+# 0830 and 1700 stay hardcoded on purpose: this is the Globex overnight range,
+# which is a fixed property of the ES contract, not the user's session filter.
+# Both are CENTRAL and both carry shiftSec, same as the session window above.
+def isOvernightBar = SecondsFromTime(0830) <  shiftSec
+                 and SecondsFromTime(1700) >= shiftSec;
+def isNewSession   = SecondsFromTime(0830) >= shiftSec
+                 and SecondsFromTime(0830)[1] < shiftSec;
 
 def ONH = if isNewSession then Highest(high, 1)
           else if isOvernightBar
