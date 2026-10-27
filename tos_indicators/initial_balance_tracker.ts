@@ -47,12 +47,16 @@
 # over the EXPANSION/ROTATION flag until a few weeks of that data exists.
 #
 # The locked IB label stays visible past 09:30 and through the evening
-# Globex session -- the most recent completed IB is worth referencing
-# overnight -- and self-clears after midnight, when SecondsFromTime(ibEndCT)
-# flips positive again. v2 shipped that carry UNLABELED and called it
-# cosmetic; it was not. See the ibYMD block below: the label now stamps
-# the session date it measured, so a Friday IB can never pass for a live
-# one on a Sunday-evening chart.
+# Globex session and straight on to the next 08:30 open -- the most recent
+# completed IB is worth referencing overnight, which is when it is hardest
+# to go look it up.
+#
+# v2 claimed this carry "self-clears after midnight". It did, and that was
+# the bug, not the feature: the clear was SecondsFromTime resetting at the
+# engine's midnight, which blanked the label for 10.5 hours a night. See
+# the ibLocked block below. The carry now runs uninterrupted, and the ibYMD
+# block stamps the session date it measured, so a Friday IB can never pass
+# for a live one on a Sunday-evening chart.
 
 # ── EVERY TIME IN THIS STUDY IS CENTRAL ─────────────────────────────
 # You type Central, you read Central, the labels print Central. The one-hour
