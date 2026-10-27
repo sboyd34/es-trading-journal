@@ -1,10 +1,28 @@
-# InitialBalanceTracker v2
-# Tracks the Initial Balance (first 60 min of RTH) high/low and reports it
-# via labels only -- no chart plots -- then compares the IB range to the
-# average RTH range to flag likely day type.
+# InitialBalanceTracker v3
+# Tracks the Initial Balance (first 60 min of RTH) high/low, reports where
+# price sits relative to that box, and compares the IB range to the average
+# RTH range to flag likely day type. Labels only -- no chart plots.
 #
 # Standalone on purpose -- kept separate from ATRRiskSizer so IB tracking
 # never touches the code that governs stop/size on live trades.
+#
+# ── v3: the box was measured and never consulted ────────────────────────
+#
+# v1 and v2 both computed ibHigh and ibLow and then never compared price to
+# either one. The study reported how BIG the box was and never which SIDE of
+# it price was on -- so the one question ORB Break actually asks ("did the
+# session accept outside the opening hour") was the one question this study
+# declined to answer, while sitting on both numbers needed to answer it.
+#
+# v3 adds four mutually exclusive states (INSIDE / ABOVE / BELOW / BREAK
+# FAILED) and prints extension in IB-range multiples, since the targets are
+# IB-based. It also kills the last instance of the v2 calendar-midnight bug:
+# rthDone was ibDone wearing a different name, and it blanked the REALIZED
+# label every night. See the rthLocked block.
+#
+# The version in this title was also wrong -- the ibLocked fix below was
+# already a v3 change shipped under a v2 header. Comments in this file have
+# caught two real bugs now, so a stale version number is not cosmetic.
 #
 # ── v2: the denominator was wrong, and wrong in a way that never showed ──
 #
@@ -241,8 +259,6 @@ def ibDay   = ibMMDD - ibMonth * 100;
 def inRTH   = SecondsFromTime(rthStartCT) >= shiftSec
           and SecondsFromTime(rthEndCT)   <  shiftSec;
 def rthOpen = inRTH and !inRTH[1];
-def rthDone = SecondsFromTime(rthEndCT)   >= shiftSec
-          and SecondsFromTime(rthStartCT) >= shiftSec;
 
 def rthHigh = CompoundValue(1,
                   if rthOpen then high
@@ -270,6 +286,30 @@ def sessCount = CompoundValue(1,
 # open, so completed-and-measured sessions = count - 1.
 def samples = Max(sessCount - 1, 0);
 
+# "The RTH session has completed" -- the exact ibLocked construction, and for
+# the exact same reason.
+#
+# v2 wrote this as rthDone:
+#
+#   def rthDone = SecondsFromTime(rthEndCT)   >= shiftSec
+#             and SecondsFromTime(rthStartCT) >= shiftSec;
+#
+# That is ibDone with different inputs, character for character in shape, and
+# it carried the identical defect: SecondsFromTime is CALENDAR-day relative,
+# so both terms went negative at the engine's midnight and rthDone stayed
+# false until 09:30 the next morning. The REALIZED label -- the one whose
+# entire job is end-of-day journaling -- went dark at 23:00 CT every night.
+#
+# It survived the ibLocked fix because fixing it alone would have been WORSE:
+# REALIZED carried no date stamp, so rendering it overnight would have put an
+# unattributed Friday number beside live Sunday price -- the precise defect
+# the ibYMD stamp was added to kill. The two changes are a package or neither,
+# which is why they land together here: the label is stamped below.
+#
+# sessCount >= 1 is already "we have seen an RTH open", so no new readiness
+# def is needed. !inRTH has no calendar hole.
+def rthLocked = sessCount >= 1 and !inRTH;
+
 # Wilder smoothing advanced ONCE PER SESSION ROLL. Average(lastRange, 14)
 # would average 14 CHART bars -- 70 minutes on a 5m chart, not 14 sessions.
 # This is the Liquidity_Map_v4 pattern, and the bug it sidesteps is the one
@@ -285,6 +325,70 @@ def fullWarm = samples >= smoothLen;
 
 def ibRatio = if ibLocked and rangeOK then ibRange / avgRange else Double.NaN;
 def ratioOK = ibLocked and rangeOK and !IsNaN(ibRatio);
+
+# ── Which side of the box? ──────────────────────────────────────────
+# The ratio answers "is there room left in the session." This answers "which
+# way did the session choose." ORB Break takes the second one as an input and
+# nothing on the chart was reporting it.
+#
+# Gated on inRTH, not on ibLocked alone. ibLocked deliberately stays true all
+# night so the IB label can carry, but "price is above the IB" measured
+# against Friday's box at 2am is noise wearing a signal's clothes. The
+# actionable window is box-complete AND session-live: 09:30-15:00 CT. inIB is
+# a subset of inRTH (same start, earlier end), so this cannot overlap the
+# forming window either.
+#
+# ibRange > 0 folded in here rather than guarded at each label: a zero-width
+# box has no breakout read to give AND would put a divide-by-zero into the
+# extension math below. One term retires both.
+def ibLive = ibLocked and inRTH and ibRange > 0;
+
+# CLOSE, not high/low. That is a trading decision, not a style one, and it
+# has a structural dividend.
+#
+# The trading half: a wick through the IB high is not a break, it is a test
+# that failed. ORB Break triggers on acceptance outside the range, so the
+# close is the honest probe.
+#
+# The structural half: a close cannot be on both sides of a box at once, so
+# outAbove and outBelow are mutually exclusive BY CONSTRUCTION -- the same
+# guarantee the ibLocked = ibReady and !inIB rewrite bought, rather than by
+# flag discipline. Switching to high/low is a one-line change and costs
+# exactly that: a single engulfing bar would print ABOVE and BELOW together,
+# which is gotcha #3 by the front door.
+def outAbove = ibLive and close > ibHigh;
+def outBelow = ibLive and close < ibLow;
+
+# The one state that needs memory. INSIDE, ABOVE and BELOW are stateless
+# reads of the current bar, but "the break failed" means inside NOW and
+# outside EARLIER, which takes a per-session record of excursion.
+#
+# Reset on ibOpen -- the same window edge the IB itself seeds on, so the
+# latch can never carry yesterday's excursion into today's box, and it is
+# correct with Extended Hours either way for the same reason the IB seeding
+# is. Note outAbove already carries ibLive, so nothing accumulates while the
+# box is still forming or after the 15:00 close.
+def sawAbove = CompoundValue(1,
+                   if ibOpen then 0 else if outAbove then 1 else sawAbove[1], 0);
+
+def sawBelow = CompoundValue(1,
+                   if ibOpen then 0 else if outBelow then 1 else sawBelow[1], 0);
+
+def everOut = sawAbove > 0 or sawBelow > 0;
+
+def ibInside = ibLive and !outAbove and !outBelow and !everOut;
+def ibFailed = ibLive and !outAbove and !outBelow and  everOut;
+
+# Extension in IB-RANGE MULTIPLES, because the targets are IB-based. 1.0x
+# past the box is the canonical trend-day objective, so "0.4x" is a statement
+# about how much of the move is still ahead -- which a raw point count is
+# not, since 7 points means different things against a 12 pt box and a 45 pt
+# one. Both print: the multiple sizes the target, the points size the stop.
+#
+# No zero guard needed -- ibRange > 0 lives in ibLive, and every consumer of
+# these two defs is gated on outAbove/outBelow, which carry it.
+def extAbove = (close - ibHigh) / ibRange;
+def extBelow = (ibLow - close) / ibRange;
 
 # ── Labels ──────────────────────────────────────────────────────────
 # One label, one CONSTANT colour, with the branch pushed into each label's
@@ -391,11 +495,48 @@ AddLabel(aggOK and ratioOK and ibRatio > expansionThreshold
          and ibRatio < rotationThreshold,
     "  NEUTRAL  ", Color.GRAY);
 
+# Four states, four AddLabel calls, mutually exclusive by construction -- NOT
+# one call with an if/else cascade in the text slot, which renders nothing at
+# all and does it without a compile error. Same reason the three day-type
+# flags above are three labels.
+#
+# Appended AFTER the existing labels on purpose. TOS renders labels in
+# declaration order, so adding here leaves every label that was already on
+# the chart in its current position.
+#
+# AsText for the multiple -- genuinely fractional, and two decimals is the
+# right precision for a target multiple. Round for the points, since AsText
+# can never render a clean whole number.
+AddLabel(aggOK and ibInside, "  INSIDE IB  ", Color.GRAY);
+
+AddLabel(aggOK and outAbove,
+    "  ABOVE IB " + AsText(extAbove) + "x (+" +
+    Round(close - ibHigh, 0) + " pts)  ",
+    Color.GREEN);
+
+AddLabel(aggOK and outBelow,
+    "  BELOW IB " + AsText(extBelow) + "x (-" +
+    Round(ibLow - close, 0) + " pts)  ",
+    Color.RED);
+
+# The state that earns the whole feature. EXPANSION LIKELY beside ABOVE IB is
+# a trend-day continuation read; EXPANSION LIKELY beside this one is the trap
+# that read walks into. The ratio alone cannot tell those two apart, which is
+# why it always felt like half an answer.
+AddLabel(aggOK and ibFailed, "  IB BREAK FAILED  ", Color.ORANGE);
+
 # The journal pair: what the IB implied, and what the session actually did.
 # Shown from the RTH close so the realized number is final, not developing.
+#
+# DATE STAMPED, and that is what lets it run on rthLocked instead of the old
+# rthDone. ibMonth/ibDay are the right stamp rather than a second derivation:
+# inIB is a subset of inRTH and the two windows share a start, so ibOpen and
+# rthOpen fire on the same bar every session -- the IB and the realized range
+# are the same trading day by construction, not by coincidence.
 def realized = rthHigh - rthLow;
 
-AddLabel(showRealizedRange and aggOK and rthDone and ibLocked and realized > 0,
-    "  REALIZED " + Round(realized, 0) + " pts | IB was " +
+AddLabel(showRealizedRange and aggOK and rthLocked and ibLocked and realized > 0,
+    "  REALIZED " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) + " " +
+    Round(realized, 0) + " pts | IB was " +
     Round(ibRange / realized * 100, 0) + "% of it  ",
     Color.CYAN);
