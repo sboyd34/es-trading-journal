@@ -68,17 +68,23 @@ input dvlLength          = 20;
 input dvlAggregation     = AggregationPeriod.FIFTEEN_MIN;
 input dvlType            = AverageType.EXPONENTIAL;
 input sessionGating      = yes;
-input sessionStartHHMM   = 0830;
-input sessionEndHHMM     = 1500;
+input sessionStartHHMM   = 0830;  # CENTRAL -- see engineOffsetHours below
+input sessionEndHHMM     = 1500;  # CENTRAL
 input openMaxPeriod      = AggregationPeriod.FIFTEEN_MIN;  # hide Open line above this
 input proximityFilter    = no;    # yes = only draw FL levels near price
 input proximityATRmult   = 2.0;   # "near" = within this many daily ATRs of close
 input dimTestedLevels    = yes;   # dim a level after price has touched it today
 input showLiquidity      = yes;   # PDH/PDL + overnight liquidity levels
 input showOvernight      = yes;   # ONH/ONL need Extended Hours (ETH) ON to populate
-input onStartHHMM        = 1700;  # overnight (Globex) window start
-input onEndHHMM          = 0830;  # overnight window end (wraps midnight)
+input onStartHHMM        = 1700;  # CENTRAL. Overnight (Globex) window start
+input onEndHHMM          = 0830;  # CENTRAL. Window end (wraps midnight)
 input liqSweepArrows     = yes;   # draw arrows on liquidity sweeps
+
+# Measured 1-hour split between this chart's Central axis and the clock
+# SecondsFromTime resolves against. Every HHMM input above is CENTRAL and is
+# corrected by this one number. Set to 0 if SecondsFromTime ever resolves
+# Central. Full reasoning at the clock-split block above inSession.
+input engineOffsetHours  = 1;
 
 # ── Global Colors (user-restylable via study settings) ──────────
 DefineGlobalColor("Pivot",      Color.WHITE);
@@ -239,12 +245,39 @@ def dvl = MovingAverage(dvlType, close(period = dvlAgg), dvlLength);
 #
 # Only the start is widened. The end keeps `>= 0`: the bar stamped at
 # the close has always been included, and that is not ours to change.
+# ── Renderer/engine clock split ──────────────────────────────────
+# All four HHMM inputs above are CENTRAL. They are not handed to
+# SecondsFromTime at face value, because on this install
+# SecondsFromTime(0830) returns 0 when the chart reads 07:30 CT -- measured
+# 10/26/26, with the chart axis confirmed Central by matching a bar's full
+# OHLC against known CT bars. System timezone is CST, so this is a split
+# between the chart renderer and the script engine, and ThinkScript cannot
+# read either clock back to correct for it.
+#
+# shiftSec is added to the COMPARISON, never to the HHMM argument. Per
+# gotchas #6/#8a constant-ness is declared per function with "assume
+# constant-required until proven otherwise"; SecondsFromTime has never been
+# proven to take a computed parameter here, and that mistake renders a
+# silently blank study. Literal arguments, arithmetic on the other side.
+#
+# Central and Eastern share DST dates, so one hour holds year-round.
+def shiftSec = engineOffsetHours * 3600;
+
 def barSec = GetAggregationPeriod() / 1000;
-def afterStart = SecondsFromTime(sessionStartHHMM) > -barSec;
+
+# Both edges in SecondsFromTime terms. SecondsTillTime(t) is exactly
+# -SecondsFromTime(t), and expressing the end as `<= shiftSec` lets one
+# offset apply to both edges instead of needing opposite signs on each.
+# The start keeps its one-bar-period widening: shiftSec - barSec, so the
+# tolerance travels with the shifted edge rather than staying at 07:30.
+#
+# The sessionStartHHMM < sessionEndHHMM wrap test is input-vs-input, so it
+# needs no shift -- both sides move by the same hour.
+def afterStart = SecondsFromTime(sessionStartHHMM) > shiftSec - barSec;
 def inSession = if !sessionGating then yes
     else if sessionStartHHMM < sessionEndHHMM
-        then afterStart and SecondsTillTime(sessionEndHHMM) >= 0
-    else afterStart or SecondsTillTime(sessionEndHHMM) >= 0;
+        then afterStart and SecondsFromTime(sessionEndHHMM) <= shiftSec
+    else afterStart or SecondsFromTime(sessionEndHHMM) <= shiftSec;
 
 def lastBar = !IsNaN(close) and IsNaN(close[-1]);
 def lastDay = GetDay() == GetLastDay();
@@ -489,10 +522,14 @@ pWBEFL3.SetLineWeight(1);
 # Start widened by one bar period for the same reason inSession is —
 # 17:00 is not a bar boundary on every period, and an overnight range
 # that starts a bar late misses the Globex open.
-def afterON = SecondsFromTime(onStartHHMM) > -barSec;
+# Same shiftSec treatment as inSession -- see the clock-split block there.
+# This window genuinely wraps midnight (1700 -> 0830), which is why the
+# `or` branch exists; shifting both edges by the same hour preserves the
+# wrap, since the comparison that selects the branch is input-vs-input.
+def afterON = SecondsFromTime(onStartHHMM) > shiftSec - barSec;
 def inON = if onStartHHMM < onEndHHMM
-    then afterON and SecondsTillTime(onEndHHMM) >= 0
-    else afterON or SecondsTillTime(onEndHHMM) >= 0;
+    then afterON and SecondsFromTime(onEndHHMM) <= shiftSec
+    else afterON or SecondsFromTime(onEndHHMM) <= shiftSec;
 def onStart = inON and !inON[1];
 def ONH = CompoundValue(1, if onStart then high else if inON then Max(ONH[1], high) else ONH[1], high);
 def ONL = CompoundValue(1, if onStart then low  else if inON then Min(ONL[1], low)  else ONL[1], low);
