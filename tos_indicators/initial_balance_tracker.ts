@@ -83,9 +83,10 @@
 # translation is what broke.
 #
 # DO NOT "fix" these back to 0830 to match the Central chart axis. The axis
-# is not what SecondsFromTime reads. Verify against the [930-1030] echo on
-# the locked label instead: if the bracket and the prices disagree with the
-# 08:30-09:30 CT tape, THEN the offset has changed and these need revisiting.
+# is not what SecondsFromTime reads. To re-verify, flip showWindow = yes and
+# read the bracket on the locked label: if it says [930-1030] and the prices
+# are not the 08:30-09:30 CT prices, THEN the offset has changed and these
+# need revisiting. Until then, leave them alone.
 #
 # Renamed from ibStart/ibEnd/rthStart/rthEnd deliberately. TOS persists input
 # values per applied study instance and re-pasting the source does NOT reset
@@ -107,6 +108,15 @@ input rotationThreshold  = 0.65;  # IB/avgRange above this -> ROTATION LIKELY
 
 input maxAggregation    = AggregationPeriod.FIFTEEN_MIN;
 input showRealizedRange = yes;
+
+# Off by default -- the clean label is the one worth staring at all session.
+# Flip to yes only when a price looks wrong. It appends the window this study
+# was HANDED, in NY/Eastern, which separates two failures that look identical
+# on a clean label: a stale persisted input (bracket reads the old window) from
+# a miscomputed range (bracket is right, prices are not). Finding that out the
+# hard way took three fix attempts and a scan of the real tape, so the echo
+# stays in the file -- just not in the way.
+input showWindow        = no;
 
 # Clamp the input that sits under a division, same as ATRRiskSizer does for
 # stopATRDivisor. rangeLength = 0 would divide by zero in the Wilder step,
@@ -254,7 +264,15 @@ AddLabel(!aggOK,
 # Printing raw HHMM is deliberate: AsTime() appears in zero third-party
 # studies on this install, so it is unverified, not available. 930 is uglier
 # than 9:30 and cannot fail.
-AddLabel(aggOK and inIB,
+#
+# Two AddLabel calls with mutually exclusive flags, NOT one call with an
+# if/else in the text slot. A branched text expression renders as nothing at
+# all and does it without a compile error -- same reason the day-type flags
+# below are three separate labels instead of one cascade.
+AddLabel(aggOK and inIB and !showWindow,
+    "  IB FORMING  ", Color.YELLOW);
+
+AddLabel(aggOK and inIB and showWindow,
     "  IB FORMING " + Round(nyIBStart, 0) + "-" + Round(nyIBEnd, 0) +
     " NY  ", Color.YELLOW);
 
@@ -270,11 +288,15 @@ AddLabel(aggOK and inIB,
 # hour early. Costly in practice: it took a yfinance scan of the real tape
 # to recover a fact the label already had in hand and declined to print.
 #
-# Reads: IB 10/26 [930-1030] 7677.00-7719.50 (43 pts)
-# The bracketed pair is the raw HHMM this study was HANDED, in NY/Eastern.
-# It is the first thing to read when a price looks wrong: a stale bracket
-# means TOS kept a persisted input and the new default never landed, which
-# is a different problem than a miscomputed window and has a different fix.
+# Reads: IB 10/26  7677.00-7719.50 (43 pts)
+# ...and with showWindow = yes, the window is spliced in:
+#         IB 10/26 [930-1030] 7677.00-7719.50 (43 pts)
+#
+# The DATE stamp is unconditional and stays that way. It is not decoration:
+# this label survives past the IB close and through the evening Globex
+# session, so without it a Friday IB reads as a live one on a Sunday-evening
+# chart. The window echo is optional because a wrong window is rare; the
+# stale carry is nightly.
 #
 # AsText() for the two price LEVELS only -- they are genuinely fractional
 # (quarter-point ticks), which is the one case AsText is right for. Every
@@ -282,7 +304,13 @@ AddLabel(aggOK and inIB,
 # decimals, so it can never render a clean whole number, and there is no
 # NumberFormat.NO_DECIMALS to ask for one. Each concatenation also leads
 # with a string literal, so the first + is never ambiguous with arithmetic.
-AddLabel(aggOK and ibLocked,
+AddLabel(aggOK and ibLocked and !showWindow,
+    "  IB " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) + "  " +
+    AsText(ibLow) + "-" + AsText(ibHigh) +
+    " (" + Round(ibRange, 0) + " pts)  ",
+    Color.WHITE);
+
+AddLabel(aggOK and ibLocked and showWindow,
     "  IB " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) +
     " [" + Round(nyIBStart, 0) + "-" + Round(nyIBEnd, 0) + "]  " +
     AsText(ibLow) + "-" + AsText(ibHigh) +
