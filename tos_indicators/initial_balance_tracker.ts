@@ -48,32 +48,57 @@
 #
 # The locked IB label stays visible past 09:30 and through the evening
 # Globex session -- the most recent completed IB is worth referencing
-# overnight -- and self-clears after midnight, when SecondsTillTime(ibEnd)
+# overnight -- and self-clears after midnight, when SecondsTillTime(nyIBEnd)
 # flips positive again. v2 shipped that carry UNLABELED and called it
 # cosmetic; it was not. See the ibYMD block below: the label now stamps
 # the session date it measured, so a Friday IB can never pass for a live
 # one on a Sunday-evening chart.
 
-# ── THESE FOUR ARE IN YOUR CHART'S DISPLAY TIMEZONE, NOT CENTRAL ────
-# SecondsFromTime() has no idea what Central is; it resolves HHMM against
-# whatever the chart is set to display, and ThinkScript cannot read that
-# setting back. The defaults below are correct ONLY on a chart displaying
-# Central. On an Eastern chart they slice the hour before the cash open.
+# ── THESE FOUR ARE NEW YORK (EASTERN) CLOCK TIMES ───────────────────
+# Not Central, and NOT the chart's display timezone. That second claim was
+# the long-running bug in this file, and it was wrong twice over.
 #
-#   chart displays CT -> 0830 / 0930 / 0830 / 1500   (these defaults)
-#   chart displays ET -> 0930 / 1030 / 0930 / 1600
+# MEASURED on this install, 10/26/26, chart axis confirmed Central:
 #
-# Recommended: set the CHART to Central instead of editing these. Every
-# other study here (FireLines, Liquidity Map) also defaults to 0830 CT, and
-# the journal's whole time-window vocabulary is CT -- one chart setting makes
-# all of them right at once, instead of four inputs per study.
+#   SecondsFromTime(0830) fires when the chart reads 07:30 CT.
+#
+# Three independent confirmations, all agreeing on a one-hour lead:
+#   - IB  with 0830/0930 printed 17.25 pts = exactly 07:30-08:30 CT
+#   - RTH with 0830/1500 printed 64.00 pts = exactly 07:30-14:00 CT
+#   - a third-party study's RTH label shifted by the same hour, while its
+#     Globex-anchored DayR label was correct -- so the offset is platform-
+#     wide and hits wall-clock windows only, not this study's logic.
+#
+# The system timezone is CST and the chart axis is Central (verified by
+# matching the 3:45 PM bar's full OHLC against known CT bars -- all four
+# values matched 15:45 CT, none matched 14:45 CT). The chart renderer and
+# the script engine are reading different clocks, and ThinkScript cannot
+# read either one back to compensate. So stop trying to: the engine wants
+# Eastern, so these inputs are DECLARED in Eastern.
+#
+# That turns out to be the honest unit anyway. The IB is the first hour of
+# the NEW YORK session, and New York opens at 9:30 -- so 0930/1030 is the
+# window written in the same numbers anyone would say it out loud in. The
+# old 0830 default was a Central translation of an Eastern fact, and the
+# translation is what broke.
+#
+# DO NOT "fix" these back to 0830 to match the Central chart axis. The axis
+# is not what SecondsFromTime reads. Verify against the [930-1030] echo on
+# the locked label instead: if the bracket and the prices disagree with the
+# 08:30-09:30 CT tape, THEN the offset has changed and these need revisiting.
+#
+# Renamed from ibStart/ibEnd/rthStart/rthEnd deliberately. TOS persists input
+# values per applied study instance and re-pasting the source does NOT reset
+# them to new file defaults -- three fix attempts appeared to do nothing for
+# exactly that reason. A changed input NAME has no persisted value to inherit,
+# so the new defaults actually take effect on re-apply.
 declare upper;
 
-input ibStart   = 0830;   # cash open, CHART TIME (see block above)
-input ibEnd     = 0930;   # 60-minute IB. Change both together.
+input nyIBStart  = 0930;   # NY cash open, EASTERN (see block above)
+input nyIBEnd    = 1030;   # 60-minute IB. Change both together.
 
-input rthStart  = 0830;   # RTH session bounds -- the range denominator
-input rthEnd    = 1500;
+input nyRTHStart = 0930;   # RTH session bounds -- the range denominator
+input nyRTHEnd   = 1600;
 
 input rangeLength = 14;   # sessions in the average RTH range (Wilder)
 
@@ -98,16 +123,16 @@ def aggOK = GetAggregationPeriod() <= maxAggregation;
 # Seeded on the first bar of the WINDOW, not on the date roll.
 #
 # v1 reset on `GetYYYYMMDD() != GetYYYYMMDD()[1]`, reasoning that the
-# electronic session rolls the trading date well before ibStart. True with
+# electronic session rolls the trading date well before nyIBStart. True with
 # Extended Hours ON. With ETH OFF the first bar of the chart day IS 08:30, so
 # newDay and inIB fired on the same bar, the reset branch won, ibHigh went
 # NaN, and the window seeded from the SECOND bar -- discarding the opening
 # bar, which is usually where the IB extreme lives. Seeding on the window
 # edge is correct with ETH either way, which also retires this study's
 # dependence on the ETH toggle.
-def inIB   = SecondsFromTime(ibStart) >= 0 and SecondsTillTime(ibEnd) > 0;
+def inIB   = SecondsFromTime(nyIBStart) >= 0 and SecondsTillTime(nyIBEnd) > 0;
 def ibOpen = inIB and !inIB[1];
-def ibDone = SecondsTillTime(ibEnd) <= 0 and SecondsFromTime(ibStart) >= 0;
+def ibDone = SecondsTillTime(nyIBEnd) <= 0 and SecondsFromTime(nyIBStart) >= 0;
 
 # CompoundValue-seeded rather than NaN-initialised. Every branch below is
 # self-referential, so a NaN arriving on bar 1 could never be flushed back
@@ -157,9 +182,9 @@ def ibMonth = Floor(ibMMDD / 100);
 def ibDay   = ibMMDD - ibMonth * 100;
 
 # ── Average RTH range: the denominator ──────────────────────────────
-def inRTH   = SecondsFromTime(rthStart) >= 0 and SecondsTillTime(rthEnd) > 0;
+def inRTH   = SecondsFromTime(nyRTHStart) >= 0 and SecondsTillTime(nyRTHEnd) > 0;
 def rthOpen = inRTH and !inRTH[1];
-def rthDone = SecondsTillTime(rthEnd) <= 0 and SecondsFromTime(rthStart) >= 0;
+def rthDone = SecondsTillTime(nyRTHEnd) <= 0 and SecondsFromTime(nyRTHStart) >= 0;
 
 def rthHigh = CompoundValue(1,
                   if rthOpen then high
@@ -212,21 +237,26 @@ AddLabel(!aggOK,
     "  IB TRACKER OFF - chart period too coarse; use 15m or faster  ",
     Color.ORANGE);
 
-# The window is echoed on this label on purpose. SecondsFromTime() resolves
-# HHMM against the CHART'S DISPLAY TIMEZONE (gotchas #2), which ThinkScript
-# gives no way to read back. A chart set to Eastern silently slices 07:30-08:30
-# CT from ibStart = 0830 -- the hour BEFORE the cash open -- and renders a
-# perfectly plausible ~17 pt IB from it. That is what happened on 2026-10-26:
-# the label read 7675.50-7692.75 when the real 08:30-09:30 CT IB was
-# 7677.00-7719.50 (42.5 pts), and rthStart/rthEnd were off by the same hour,
-# so the ratio was wrong in BOTH terms.
+# The window is echoed on this label on purpose, and the echo is what finally
+# caught the bug. SecondsFromTime() does NOT resolve HHMM against the chart's
+# display timezone -- that was gotchas #2 and it is wrong on this install. The
+# chart axis is Central while the engine resolves Eastern, so 0830 silently
+# sliced 07:30-08:30 CT, the hour BEFORE the cash open, and rendered a
+# perfectly plausible ~17 pt IB from it. On 2026-10-26 the label read
+# 7675.50-7692.75 when the real first NY hour was 7677.00-7719.50 (42.5 pts),
+# and the RTH inputs were off by the same hour, so the ratio was wrong in BOTH
+# terms -- 17/80 instead of 42.5/80, which inverts the day-type call.
+#
+# An unattributed price is indistinguishable from a correct one. Echoing the
+# window turns "the number looks wrong" into "the number is right about the
+# wrong hour," which is a one-glance diagnosis instead of a tape scan.
 #
 # Printing raw HHMM is deliberate: AsTime() appears in zero third-party
-# studies on this install, so it is unverified, not available. 830 is uglier
-# than 8:30 and cannot fail.
+# studies on this install, so it is unverified, not available. 930 is uglier
+# than 9:30 and cannot fail.
 AddLabel(aggOK and inIB,
-    "  IB FORMING " + Round(ibStart, 0) + "-" + Round(ibEnd, 0) +
-    " chart time  ", Color.YELLOW);
+    "  IB FORMING " + Round(nyIBStart, 0) + "-" + Round(nyIBEnd, 0) +
+    " NY  ", Color.YELLOW);
 
 # The window is echoed HERE too, not only on the forming label above.
 #
@@ -235,15 +265,16 @@ AddLabel(aggOK and inIB,
 # chart is this one, and it reported two prices with no statement of what
 # window produced them. That is the same unattributed-value defect the date
 # stamp was added to fix, one field short: the label named its SESSION but
-# not its WINDOW, so an Eastern chart's 07:30-08:30 CT slice rendered as
+# not its WINDOW, so the engine's 07:30-08:30 CT slice rendered as
 # "IB 10/26 7675.50-7692.75" -- correct-looking, correctly dated, and an
 # hour early. Costly in practice: it took a yfinance scan of the real tape
 # to recover a fact the label already had in hand and declined to print.
 #
-# Reads: IB 10/26 [830-930] 7677.00-7719.50 (43 pts)
-# The bracketed pair is raw chart-time HHMM. If it says [830-930] and the
-# prices are not the 08:30-09:30 CT prices, the chart is not on Central --
-# no external data needed to tell.
+# Reads: IB 10/26 [930-1030] 7677.00-7719.50 (43 pts)
+# The bracketed pair is the raw HHMM this study was HANDED, in NY/Eastern.
+# It is the first thing to read when a price looks wrong: a stale bracket
+# means TOS kept a persisted input and the new default never landed, which
+# is a different problem than a miscomputed window and has a different fix.
 #
 # AsText() for the two price LEVELS only -- they are genuinely fractional
 # (quarter-point ticks), which is the one case AsText is right for. Every
@@ -253,7 +284,7 @@ AddLabel(aggOK and inIB,
 # with a string literal, so the first + is never ambiguous with arithmetic.
 AddLabel(aggOK and ibLocked,
     "  IB " + Round(ibMonth, 0) + "/" + Round(ibDay, 0) +
-    " [" + Round(ibStart, 0) + "-" + Round(ibEnd, 0) + "]  " +
+    " [" + Round(nyIBStart, 0) + "-" + Round(nyIBEnd, 0) + "]  " +
     AsText(ibLow) + "-" + AsText(ibHigh) +
     " (" + Round(ibRange, 0) + " pts)  ",
     Color.WHITE);
