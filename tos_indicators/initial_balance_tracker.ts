@@ -169,8 +169,6 @@ def shiftSec = engineOffsetHours * 3600;
 def inIB   = SecondsFromTime(ibStartCT) >= shiftSec
          and SecondsFromTime(ibEndCT)   <  shiftSec;
 def ibOpen = inIB and !inIB[1];
-def ibDone = SecondsFromTime(ibEndCT)   >= shiftSec
-         and SecondsFromTime(ibStartCT) >= shiftSec;
 
 # CompoundValue-seeded rather than NaN-initialised. Every branch below is
 # self-referential, so a NaN arriving on bar 1 could never be flushed back
@@ -190,16 +188,32 @@ def ibLow = CompoundValue(1,
 def ibCount = CompoundValue(1, if ibOpen then ibCount[1] + 1 else ibCount[1], 0);
 
 def ibReady  = ibCount >= 1;
-def ibLocked = ibReady and ibDone;
+
+# "A window has completed" is `we have seen one AND we are not inside one`.
+# Note what is NOT in that sentence: any reference to the clock.
+#
+# v2 wrote this as `ibReady and ibDone`, where ibDone was
+# `SecondsFromTime(ibEndCT) >= shiftSec and SecondsFromTime(ibStartCT) >=
+# shiftSec`. SecondsFromTime is CALENDAR-day relative (Liquidity_Map_v4:278
+# has to write the overnight window as an `or` for exactly this reason), so
+# BOTH terms went negative at the engine's midnight and ibDone stayed false
+# until 09:30 the next morning -- a 10.5-hour hole covering all of Globex.
+#
+# MEASURED 10/27/26 08:27 CT: the study rendered ZERO labels. Every
+# AddLabel here is gated on inIB, ibLocked, ratioOK, rthDone or !aggOK, and
+# all five were false at once, which on screen is indistinguishable from a
+# study that failed to load. That measurement also disproves the v2 comment
+# claiming ibDone survived "past midnight, all weekend" -- it does not.
+#
+# !inIB has no such hole, and it makes inIB and ibLocked mutually exclusive
+# by construction rather than by flag discipline (gotcha #3).
+def ibLocked = ibReady and !inIB;
 def ibRange  = ibHigh - ibLow;
 
 # ── Which session does that IB belong to? ───────────────────────────
-# ibDone is `past 09:30 and past 08:30`, and SecondsFromTime is
-# CALENDAR-day relative (Liquidity_Map_v4:278 has to write the overnight
-# window as an `or` for exactly this reason). So ibDone is true on every
-# bar after 09:30 of every calendar day -- through the 17:00 Globex roll,
-# past midnight, all weekend, holidays included. ibHigh/ibLow carry
-# forward untouched across all of it.
+# ibHigh/ibLow carry forward untouched through the 17:00 Globex roll, past
+# midnight, all weekend, holidays included. Gating on !inIB is what finally
+# lets that carry render instead of blanking overnight.
 #
 # That carry is intentional and still useful, but v2 shipped it unlabeled:
 # on a Sunday-evening chart a Friday IB rendered identically to a live
