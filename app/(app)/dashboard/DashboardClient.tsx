@@ -117,7 +117,7 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
   return (
     <div className="space-y-6">
       <p className="text-center text-sm italic text-gray-500 tracking-wide">
-        I am a disciplined, patient and objective trader.
+        I am disciplined. I am objective. I am patient. I am profitable.
       </p>
       <SessionCloseNotifier />
 

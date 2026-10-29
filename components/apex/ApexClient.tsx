@@ -476,7 +476,7 @@ export default function ApexClient({ userId, initialAccounts, initialTrades, tab
     <div className="space-y-5 max-w-3xl mx-auto pb-10">
       {/* Affirmation */}
       <p className="text-center text-sm italic text-gray-500 tracking-wide">
-        I am a disciplined, patient and objective trader.
+        I am disciplined. I am objective. I am patient. I am profitable.
       </p>
 
       {/* Migration guide */}

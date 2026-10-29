@@ -773,7 +773,7 @@ export default function BlindBacktestClient() {
           <div>
             <p className="text-xs font-medium text-blue-400 tracking-widest uppercase mb-1">Blind Backtest Engine</p>
             <p className="text-sm text-gray-400 italic">
-              &ldquo;I am a disciplined, patient and objective trader.&rdquo;
+              &ldquo;I am disciplined. I am objective. I am patient. I am profitable.&rdquo;
             </p>
           </div>
           <button
