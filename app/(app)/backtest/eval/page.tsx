@@ -95,8 +95,11 @@ export default function EvalPage() {
       setSelectedRisk(null)
       // Save compact result to localStorage for dashboard card
       try {
+        const data = json as EvalMonteCarloResponse
         localStorage.setItem(LS_KEY, JSON.stringify({
-          passProb: (json as EvalMonteCarloResponse).passProb,
+          passProb:   data.passProb,
+          passProbCI: data.passProbCI,
+          verdict:    data.adequacy.verdict,
           riskPerTrade,
           runAt: new Date().toISOString(),
         }))
@@ -182,12 +185,17 @@ export default function EvalPage() {
       {result && (
         <>
           {/* Stability caveat */}
-          <div className="bg-gray-800/30 border border-gray-700/40 rounded-lg px-4 py-2.5 text-xs text-gray-500">
-            <span className="text-gray-400 font-medium">Important:</span> This simulator assumes
-            future trades will resemble past trades. Small samples (&lt;30) make results unstable.
-            R distribution built from{' '}
-            <span className="text-gray-300 font-medium">{result.rSampleSize} trades</span>.{' '}
-            {result.riskInferenceNote}
+          <div className="bg-gray-800/30 border border-gray-700/40 rounded-lg px-4 py-2.5 text-xs text-gray-500 space-y-1">
+            <p>
+              <span className="text-gray-400 font-medium">Where the error comes from:</span>{' '}
+              <span className="text-gray-300 font-medium">±{result.mcStdErr.toFixed(2)}pt</span>{' '}
+              from running {numSimulations.toLocaleString()} simulations ·{' '}
+              <span className="text-gray-300 font-medium">±{result.estimationStdErr.toFixed(1)}pt</span>{' '}
+              from having only {result.adequacy.tradeCount} trades across{' '}
+              {result.adequacy.distinctDays} days. More simulations shrink the first number
+              and leave the second untouched.
+            </p>
+            <p className="text-gray-600">{result.riskInferenceNote}</p>
           </div>
 
           {/* Pass probability headline */}
@@ -195,9 +203,39 @@ export default function EvalPage() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="col-span-2 md:col-span-1 flex flex-col justify-center">
                 <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Pass Probability</p>
-                <p className={cn('text-5xl font-bold tabular-nums', passProbColor(result.passProb))}>
-                  {result.passProb.toFixed(1)}%
-                </p>
+
+                {result.adequacy.verdict === 'adequate' && (
+                  <>
+                    <p className={cn('text-5xl font-bold tabular-nums', passProbColor(result.passProb))}>
+                      {result.passProb.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      ± {result.estimationStdErr.toFixed(1)}pt
+                    </p>
+                  </>
+                )}
+
+                {result.adequacy.verdict === 'directional' && (
+                  <>
+                    <p className="text-4xl font-bold tabular-nums text-amber-400">
+                      {result.passProbCI[0].toFixed(0)}–{result.passProbCI[1].toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      directional only · point estimate {result.passProb.toFixed(1)}%
+                    </p>
+                  </>
+                )}
+
+                {result.adequacy.verdict === 'insufficient' && (
+                  <>
+                    <p className="text-2xl font-bold text-gray-400">Not enough data</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      95% interval spans {result.passProbCI[0].toFixed(0)}–
+                      {result.passProbCI[1].toFixed(0)}% — too wide to act on
+                    </p>
+                  </>
+                )}
+
                 <p className="text-xs text-gray-500 mt-2">
                   ${riskPerTrade}/trade · {numSimulations.toLocaleString()} sims
                 </p>
@@ -216,6 +254,20 @@ export default function EvalPage() {
               ))}
             </div>
           </div>
+
+          {result.adequacy.blockers.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
+              <p className="text-xs font-semibold text-amber-300 mb-2">What&rsquo;s missing</p>
+              <ul className="space-y-1">
+                {result.adequacy.blockers.map(b => (
+                  <li key={b} className="flex gap-2 text-xs text-amber-200/80">
+                    <span className="text-amber-500">•</span>
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Equity fan chart */}
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
@@ -270,58 +322,73 @@ export default function EvalPage() {
           </div>
 
           {/* Risk comparison table */}
-          <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-700/50">
+          {!result.adequacy.suppressRiskComparison && (
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-700/50">
+                <h2 className="text-sm font-semibold text-gray-200">Risk Per Trade Comparison</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Same R distribution replayed at four risk levels — click a row to highlight
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-700/50">
+                      {['Risk/Trade', 'Pass %', 'Fail %', 'Timeout %', 'Median Days to Pass'].map(h => (
+                        <th key={h} className="px-4 py-3 text-xs font-semibold text-gray-400 text-left">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.rComparison.map((row: ComboComparison) => {
+                      const isSelected = selectedRisk === row.riskPerTrade
+                      const isCurrent  = row.riskPerTrade === riskPerTrade
+                      return (
+                        <tr
+                          key={row.riskPerTrade}
+                          onClick={() => setSelectedRisk(isSelected ? null : row.riskPerTrade)}
+                          className={cn(
+                            'border-b border-gray-700/30 cursor-pointer transition',
+                            isSelected ? 'bg-blue-600/10' : 'hover:bg-gray-700/20',
+                          )}
+                        >
+                          <td className="px-4 py-3 text-gray-300 font-medium">
+                            ${row.riskPerTrade}
+                            {isCurrent && (
+                              <span className="ml-2 text-[10px] bg-blue-600/30 text-blue-300 px-1.5 py-0.5 rounded font-semibold">
+                                current
+                              </span>
+                            )}
+                          </td>
+                          <td className={cn('px-4 py-3 font-semibold', passProbColor(row.passProb))}>
+                            {row.passProb.toFixed(1)}%
+                          </td>
+                          <td className="px-4 py-3 text-red-400">{row.failProb.toFixed(1)}%</td>
+                          <td className="px-4 py-3 text-gray-400">{row.timeoutProb.toFixed(1)}%</td>
+                          <td className="px-4 py-3 text-blue-400">
+                            {row.medianDaysToPass != null ? `${row.medianDaysToPass}d` : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {result.adequacy.suppressRiskComparison && (
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-5 py-4">
               <h2 className="text-sm font-semibold text-gray-200">Risk Per Trade Comparison</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Same R distribution replayed at four risk levels — click a row to highlight
+              <p className="text-xs text-gray-500 mt-1">
+                Hidden: only {result.adequacy.tradeCount > 0
+                  ? Math.round(result.adequacy.stopCoverage * 100)
+                  : 0}% of trades have a usable stop. For the rest, R is net P&amp;L ÷ the
+                assumed risk, so replaying them at a different risk level just rescales the
+                same number. The comparison would show arithmetic, not evidence.
               </p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-700/50">
-                    {['Risk/Trade', 'Pass %', 'Fail %', 'Timeout %', 'Median Days to Pass'].map(h => (
-                      <th key={h} className="px-4 py-3 text-xs font-semibold text-gray-400 text-left">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.rComparison.map((row: ComboComparison) => {
-                    const isSelected = selectedRisk === row.riskPerTrade
-                    const isCurrent  = row.riskPerTrade === riskPerTrade
-                    return (
-                      <tr
-                        key={row.riskPerTrade}
-                        onClick={() => setSelectedRisk(isSelected ? null : row.riskPerTrade)}
-                        className={cn(
-                          'border-b border-gray-700/30 cursor-pointer transition',
-                          isSelected ? 'bg-blue-600/10' : 'hover:bg-gray-700/20',
-                        )}
-                      >
-                        <td className="px-4 py-3 text-gray-300 font-medium">
-                          ${row.riskPerTrade}
-                          {isCurrent && (
-                            <span className="ml-2 text-[10px] bg-blue-600/30 text-blue-300 px-1.5 py-0.5 rounded font-semibold">
-                              current
-                            </span>
-                          )}
-                        </td>
-                        <td className={cn('px-4 py-3 font-semibold', passProbColor(row.passProb))}>
-                          {row.passProb.toFixed(1)}%
-                        </td>
-                        <td className="px-4 py-3 text-red-400">{row.failProb.toFixed(1)}%</td>
-                        <td className="px-4 py-3 text-gray-400">{row.timeoutProb.toFixed(1)}%</td>
-                        <td className="px-4 py-3 text-blue-400">
-                          {row.medianDaysToPass != null ? `${row.medianDaysToPass}d` : '—'}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          )}
         </>
       )}
 
