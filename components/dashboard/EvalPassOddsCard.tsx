@@ -8,6 +8,8 @@ const LS_KEY = 'apex.eval.lastResult'
 
 interface LastRun {
   passProb: number
+  passProbCI?: [number, number]
+  verdict?: 'adequate' | 'directional' | 'insufficient'
   riskPerTrade: number
   runAt: string
 }
@@ -41,9 +43,22 @@ export default function EvalPassOddsCard() {
     <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 flex items-center justify-between gap-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Eval Pass Odds</p>
-        <p className={cn('text-3xl font-bold tabular-nums mt-0.5', passProbColor(lastRun.passProb))}>
-          {lastRun.passProb.toFixed(1)}%
-        </p>
+        {lastRun.verdict === 'insufficient' || !lastRun.verdict ? (
+          <>
+            <p className="text-2xl font-bold text-gray-400 mt-0.5">
+              {lastRun.passProbCI
+                ? `${lastRun.passProbCI[0].toFixed(0)}–${lastRun.passProbCI[1].toFixed(0)}%`
+                : '—'}
+            </p>
+            <span className="inline-block mt-1 text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-semibold">
+              needs more data
+            </span>
+          </>
+        ) : (
+          <p className={cn('text-3xl font-bold tabular-nums mt-0.5', passProbColor(lastRun.passProb))}>
+            {lastRun.passProb.toFixed(1)}%
+          </p>
+        )}
         <p className="text-[10px] text-gray-600 mt-1">
           ${lastRun.riskPerTrade}/trade · {ageLabel}
         </p>
