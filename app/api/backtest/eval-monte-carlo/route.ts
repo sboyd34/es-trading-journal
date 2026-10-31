@@ -9,6 +9,7 @@ import {
   BOOTSTRAP_INNER_SIMS,
   type Adequacy,
 } from '@/lib/eval-uncertainty'
+import { APEX_CONFIGS, type AccountSize } from '@/lib/apex-config'
 
 const POINT_VALUES: Record<string, number> = { ES: 50, MES: 5, NQ: 20, MNQ: 2 }
 const COMPARISON_RISKS = [250, 500, 750, 1000]
@@ -59,6 +60,7 @@ export interface EvalMonteCarloResponse {
   estimationStdErr: number
   bootstrapReps: number
   adequacy: Adequacy
+  resolvedThreshold: number
 }
 
 function pct(sorted: number[], p: number): number {
@@ -240,15 +242,38 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // Defaults come from the user's actual Apex account rather than a
+    // hardcoded snapshot. Most-recently-updated row wins when several exist.
+    const { data: acct } = await supabase
+      .from('apex_accounts')
+      .select('account_size, starting_balance, current_balance, highest_balance')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const acctSize = (acct?.account_size ?? 250_000) as AccountSize
+    const cfg = APEX_CONFIGS[acctSize] ?? APEX_CONFIGS[250_000]
+    const dfltStartingEquity  = acct?.starting_balance ?? acctSize
+    const dfltCurrentEquity   = acct?.current_balance  ?? dfltStartingEquity
+    // Apex trails the threshold on the high-water mark and freezes it at
+    // startingEquity + 100. Derive rather than store: highest_balance is the
+    // HWM the tracker already maintains.
+    const hwm                 = acct?.highest_balance  ?? dfltCurrentEquity
+    const dfltCurrentThreshold = Math.min(
+      hwm - cfg.trailingDrawdown,
+      dfltStartingEquity + 100,
+    )
+
     const body = await request.json().catch(() => ({}))
     const input: EvalSimInput = {
-      startingEquity:   body.startingEquity   ?? 250_000,
-      profitTarget:     body.profitTarget      ?? 15_000,
-      trailingDrawdown: body.trailingDrawdown  ?? 6_500,
-      riskPerTrade:     body.riskPerTrade      ?? 500,
-      tradesPerDay:     body.tradesPerDay      ?? 2.5,
-      currentEquity:    body.currentEquity     ?? 251_636.10,
-      currentThreshold: body.currentThreshold  ?? 245_136.10,
+      startingEquity:   body.startingEquity   ?? dfltStartingEquity,
+      profitTarget:     body.profitTarget     ?? cfg.profitTarget,
+      trailingDrawdown: body.trailingDrawdown ?? cfg.trailingDrawdown,
+      riskPerTrade:     body.riskPerTrade     ?? 500,
+      tradesPerDay:     body.tradesPerDay     ?? 2.5,
+      currentEquity:    body.currentEquity    ?? dfltCurrentEquity,
+      currentThreshold: body.currentThreshold ?? dfltCurrentThreshold,
       numSimulations:   Math.min(body.numSimulations ?? 10_000, 20_000),
     }
 
@@ -373,11 +398,12 @@ export async function POST(request: NextRequest) {
       rComparison,
       rSampleSize:      samples.length,
       riskInferenceNote,
-      passProbCI:       uncertainty.passProbCI,
-      mcStdErr:         uncertainty.mcStdErr,
-      estimationStdErr: uncertainty.estimationStdErr,
-      bootstrapReps:    bootstrapProps.length,
+      passProbCI:        uncertainty.passProbCI,
+      mcStdErr:          uncertainty.mcStdErr,
+      estimationStdErr:  uncertainty.estimationStdErr,
+      bootstrapReps:     bootstrapProps.length,
       adequacy,
+      resolvedThreshold: input.currentThreshold,
     } satisfies EvalMonteCarloResponse)
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

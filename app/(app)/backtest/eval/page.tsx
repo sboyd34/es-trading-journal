@@ -61,8 +61,8 @@ export default function EvalPage() {
   const [trailingDrawdown, setTrailingDrawdown]  = useState(6_500)
   const [riskPerTrade,     setRiskPerTrade]      = useState(500)
   const [tradesPerDay,     setTradesPerDay]      = useState(2.5)
-  const [currentEquity,    setCurrentEquity]     = useState(251_636.10)
-  const [currentThreshold, setCurrentThreshold]  = useState(245_136.10)
+  const [currentEquity,    setCurrentEquity]     = useState<number | null>(null)
+  const [currentThreshold, setCurrentThreshold]  = useState<number | null>(null)
   const [numSimulations,   setNumSimulations]    = useState(10_000)
 
   const [result,       setResult]       = useState<EvalMonteCarloResponse | null>(null)
@@ -79,7 +79,9 @@ export default function EvalPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           startingEquity, profitTarget, trailingDrawdown, riskPerTrade,
-          tradesPerDay, currentEquity, currentThreshold, numSimulations,
+          tradesPerDay, numSimulations,
+          ...(currentEquity    !== null ? { currentEquity }    : {}),
+          ...(currentThreshold !== null ? { currentThreshold } : {}),
         }),
       })
       const json = await res.json()
@@ -145,8 +147,8 @@ export default function EvalPage() {
           <NumInput label="Trailing Drawdown ($)"  value={trailingDrawdown} onChange={setTrailingDrawdown} step={100}   />
           <NumInput label="Risk Per Trade ($)"     value={riskPerTrade}     onChange={setRiskPerTrade}     step={50}  min={50}  />
           <NumInput label="Trades Per Day"         value={tradesPerDay}     onChange={setTradesPerDay}     step={0.5} min={0.5} />
-          <NumInput label="Current Equity ($)"     value={currentEquity}    onChange={setCurrentEquity}    step={0.01}  />
-          <NumInput label="Current Threshold ($)"  value={currentThreshold} onChange={setCurrentThreshold} step={0.01}  />
+          <NumInput label="Current Equity ($) — blank uses live account balance"    value={currentEquity    ?? 0} onChange={setCurrentEquity}    step={0.01}  />
+          <NumInput label="Current Threshold ($) — blank uses live account balance" value={currentThreshold ?? 0} onChange={setCurrentThreshold} step={0.01}  />
           <NumInput
             label="Simulations"
             value={numSimulations}
@@ -240,7 +242,7 @@ export default function EvalPage() {
                   label={{ value: 'Pass target', position: 'right', fill: '#10b981', fontSize: 10 }}
                 />
                 <ReferenceLine
-                  y={currentThreshold}
+                  y={result.resolvedThreshold}
                   stroke="#ef4444"
                   strokeWidth={1}
                   strokeDasharray="4 2"
