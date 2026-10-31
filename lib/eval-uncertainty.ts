@@ -14,8 +14,12 @@ export const BOOTSTRAP_INNER_SIMS = 300
 export const CI_ADEQUATE_MAX_WIDTH = 10
 /** CI width above which no percentage is rendered at all. */
 export const CI_DIRECTIONAL_MAX_WIDTH = 20
-/** Below this fraction of trades carrying a real stop, risk comparison is circular. */
-export const MIN_STOP_COVERAGE = 0.5
+/**
+ * Below this fraction of trades carrying a recorded MFE, the Apex
+ * trailing-threshold ratchet goes unmodeled on too much of the sample for the
+ * fail probability to be trusted as a floor.
+ */
+export const MIN_EXCURSION_COVERAGE = 0.5
 /** Fewer distinct trading days than this means the sample is one regime. */
 export const MIN_DISTINCT_DAYS = 20
 
@@ -104,7 +108,8 @@ export interface AdequacyInput {
   ciWidth: number
   tradeCount: number
   distinctDays: number
-  stopsPresent: number
+  /** Trades carrying a recorded MFE, which is what gates the trailing ratchet. */
+  excursionsPresent: number
   bootstrapReps: number
 }
 
@@ -113,14 +118,14 @@ export interface Adequacy {
   ciWidth: number
   tradeCount: number
   distinctDays: number
-  stopCoverage: number
+  excursionCoverage: number
   suppressRiskComparison: boolean
   blockers: string[]
 }
 
 export function assessAdequacy(i: AdequacyInput): Adequacy {
-  const { ciWidth, tradeCount, distinctDays, stopsPresent, bootstrapReps } = i
-  const stopCoverage = tradeCount > 0 ? stopsPresent / tradeCount : 0
+  const { ciWidth, tradeCount, distinctDays, excursionsPresent, bootstrapReps } = i
+  const excursionCoverage = tradeCount > 0 ? excursionsPresent / tradeCount : 0
   const blockers: string[] = []
 
   let verdict: AdequacyVerdict =
@@ -154,10 +159,11 @@ export function assessAdequacy(i: AdequacyInput): Adequacy {
     verdict = 'directional'
   }
 
-  if (stopCoverage < MIN_STOP_COVERAGE) {
+  if (excursionCoverage < MIN_EXCURSION_COVERAGE) {
     blockers.push(
-      `Only ${stopsPresent} of ${tradeCount} trades have a usable stop (${Math.round(stopCoverage * 100)}%). ` +
-        `R-multiples on the rest are net P&L ÷ assumed risk, so risk-sizing comparisons are circular.`,
+      `Only ${excursionsPresent} of ${tradeCount} trades have a recorded MFE (${Math.round(excursionCoverage * 100)}%). ` +
+        `Apex trails the drawdown threshold on unrealized highs, so trades with no excursion data ` +
+        `never ratchet it — these odds understate fail risk.`,
     )
   }
 
@@ -173,8 +179,11 @@ export function assessAdequacy(i: AdequacyInput): Adequacy {
     ciWidth,
     tradeCount,
     distinctDays,
-    stopCoverage,
-    suppressRiskComparison: stopCoverage < MIN_STOP_COVERAGE || verdict === 'insufficient',
+    excursionCoverage,
+    // Risk-per-trade is a uniform position-size multiplier on a dollar replay,
+    // so the comparison is arithmetically meaningful at any excursion coverage.
+    // It is withheld only when the pass probability itself is not estimable.
+    suppressRiskComparison: verdict === 'insufficient',
     blockers,
   }
 }

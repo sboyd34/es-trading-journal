@@ -10,20 +10,14 @@ import {
   type Adequacy,
 } from '@/lib/eval-uncertainty'
 import { APEX_CONFIGS, type AccountSize } from '@/lib/apex-config'
+import { buildRSamples, type RSample, type SampleTrade } from '@/lib/eval-samples'
 
-const POINT_VALUES: Record<string, number> = { ES: 50, MES: 5, NQ: 20, MNQ: 2 }
 const COMPARISON_RISKS = [250, 500, 750, 1000]
 // Sampled trading days for the fan chart (25 checkpoints over 120 days)
 const FAN_DAYS = [
   0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
   65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120,
 ]
-
-interface RSample {
-  r: number
-  mfePts: number | null
-  stopPts: number | null
-}
 
 export interface EvalSimInput {
   startingEquity: number
@@ -134,10 +128,12 @@ function simulate(
     for (let tradeIdx = 1; tradeIdx <= maxTrades; tradeIdx++) {
       const s = samples[Math.floor(Math.random() * n)]
 
-      // Intra-trade MFE ratchet for winning trades (Apex trails on unrealized peaks)
-      if (s.r > 0 && s.mfePts !== null && s.stopPts !== null && s.stopPts > 0) {
-        const mfeR = s.mfePts / s.stopPts
-        const intraPeak = equity + mfeR * riskPerTrade
+      // Intra-trade MFE ratchet for winning trades (Apex trails on unrealized
+      // peaks). Gated on MFE presence alone — this used to also require a
+      // stop, which silenced the ratchet on 36 of 48 trades and understated
+      // the single mechanic most likely to fail an eval.
+      if (s.r > 0 && s.mfeR !== null) {
+        const intraPeak = equity + s.mfeR * riskPerTrade
         if (intraPeak > equityHwm) {
           equityHwm = intraPeak
           const newThreshold = Math.min(equityHwm - trailingDrawdown, freezeThreshold)
@@ -283,55 +279,22 @@ export async function POST(request: NextRequest) {
       numSimulations:   Math.min(body.numSimulations ?? 10_000, 20_000),
     }
 
-    // Fetch live trades
+    // Fetch live trades. stop_loss is deliberately not selected: see the
+    // header of lib/eval-samples.ts for why per-trade stop risk is not a
+    // usable denominator on this account.
     const { data: liveTrades } = await supabase
       .from('trades')
-      .select('net_pnl, entry_price, stop_loss, quantity, instrument, mfe, date')
+      .select('net_pnl, quantity, instrument, mfe, date')
       .eq('user_id', user.id)
 
-    type RawRow = {
-      net_pnl: number
-      entry_price: number
-      stop_loss: number | null
-      quantity: number
-      instrument: string
-      mfe: number | null
-      date: string | null
-    }
+    type RawRow = SampleTrade & { date: string | null }
 
     const rawTrades: RawRow[] = [...(liveTrades ?? [])] as RawRow[]
 
-    const usableTrades = rawTrades.filter(t => t.net_pnl != null && t.entry_price != null)
+    const usableTrades = rawTrades.filter(t => t.net_pnl != null)
 
-    let stopCount = 0
-    let fallbackCount = 0
-
-    const samples: RSample[] = usableTrades
-      .map(t => {
-        const pv = POINT_VALUES[t.instrument ?? 'ES'] ?? 50
-        let riskDollars: number
-        let stopPts: number | null = null
-
-        if (t.stop_loss != null) {
-          stopPts = Math.abs(t.entry_price - t.stop_loss)
-          riskDollars = stopPts * pv * (t.quantity ?? 1)
-          if (riskDollars > 0) {
-            stopCount++
-          } else {
-            riskDollars = input.riskPerTrade
-            stopPts = null
-            fallbackCount++
-          }
-        } else {
-          riskDollars = input.riskPerTrade
-          fallbackCount++
-        }
-
-        const r = t.net_pnl / riskDollars
-        const mfePts = t.mfe != null && stopPts != null ? t.mfe : null
-
-        return { r, mfePts, stopPts }
-      })
+    const samples: RSample[] = buildRSamples(usableTrades, input.riskPerTrade)
+    const excursionCount = samples.filter(s => s.mfeR !== null).length
 
     if (samples.length < 5) {
       return NextResponse.json(
@@ -341,11 +304,11 @@ export async function POST(request: NextRequest) {
     }
 
     const riskInferenceNote =
-      fallbackCount === 0
-        ? `Risk inferred from stop distance for all ${samples.length} trades.`
-        : stopCount === 0
-        ? `No stop_loss data found — all ${samples.length} trades assumed $${input.riskPerTrade} risk.`
-        : `Risk from stop distance: ${stopCount} trade${stopCount !== 1 ? 's' : ''}. Fallback $${input.riskPerTrade} assumed: ${fallbackCount} trade${fallbackCount !== 1 ? 's' : ''}.`
+      `Replays realized net P&L across all ${samples.length} trades; ` +
+      `$${input.riskPerTrade}/trade scales position size uniformly. ` +
+      (excursionCount === samples.length
+        ? `MFE recorded on all ${samples.length}, so the trailing-threshold ratchet is modeled on every winner.`
+        : `MFE recorded on ${excursionCount} of ${samples.length} — the trailing-threshold ratchet is unmodeled on the rest, which understates fail risk.`)
 
     const mainResult = simulate(samples, input, input.riskPerTrade, true)
     const { numSimulations } = input
@@ -390,7 +353,7 @@ export async function POST(request: NextRequest) {
       ciWidth: uncertainty.ciWidth,
       tradeCount: samples.length,
       distinctDays,
-      stopsPresent: stopCount,
+      excursionsPresent: excursionCount,
       bootstrapReps: bootstrapProps.length,
     })
 

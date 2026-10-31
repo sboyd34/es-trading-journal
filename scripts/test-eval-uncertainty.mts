@@ -84,7 +84,7 @@ check('floor would give', Math.floor(300 * 0.025), 7)
 }
 
 // ---------- assessAdequacy ----------
-const healthy = { tradeCount: 200, distinctDays: 60, stopsPresent: 200, bootstrapReps: BOOTSTRAP_REPS }
+const healthy = { tradeCount: 200, distinctDays: 60, excursionsPresent: 200, bootstrapReps: BOOTSTRAP_REPS }
 check('verdict adequate',       assessAdequacy({ ...healthy, ciWidth: 5 }).verdict, 'adequate')
 check('verdict adequate bound', assessAdequacy({ ...healthy, ciWidth: 10 }).verdict, 'adequate')
 check('verdict directional',    assessAdequacy({ ...healthy, ciWidth: 15 }).verdict, 'directional')
@@ -104,22 +104,33 @@ check(
   'insufficient',
 )
 
-// The live shape as of 2026-10-30: 47 trades, 8 days, 11 usable stops.
+// The live shape as of 2026-10-31: 48 trades, 9 days, 19 recorded MFEs.
 // ciWidth 43 > CI_DIRECTIONAL_MAX_WIDTH (20) → verdict 'insufficient' from width alone.
 // bootstrapReps === BOOTSTRAP_REPS and ciWidth !== 0, so no bootstrap blocker fires.
-// Only stop-coverage blocker (11/47 ≈ 23%) and distinct-days blocker (8 < 20) fire → 2 blockers.
+// Excursion-coverage blocker (19/48 ≈ 40%) and distinct-days blocker (9 < 20) fire → 2.
 {
   const a = assessAdequacy({
     ciWidth: 43,
-    tradeCount: 47,
-    distinctDays: 8,
-    stopsPresent: 11,
+    tradeCount: 48,
+    distinctDays: 9,
+    excursionsPresent: 19,
     bootstrapReps: BOOTSTRAP_REPS,
   })
   check('live verdict',    a.verdict, 'insufficient')
-  check('live coverage',   round(a.stopCoverage, 4), 0.234)
+  check('live coverage',   round(a.excursionCoverage, 4), 0.3958)
   check('live suppresses', a.suppressRiskComparison, true)
   check('live blocker ct', a.blockers.length, 2)
+}
+
+// Low excursion coverage warns but must NOT hide the risk comparison: under a
+// dollar replay, risk-per-trade is a uniform position-size multiplier, so the
+// comparison is arithmetically sound even when the ratchet is under-modeled.
+// This is the inverse of the old stop-coverage behavior and the whole point of
+// repointing the signal.
+{
+  const a = assessAdequacy({ ...healthy, ciWidth: 5, excursionsPresent: 20 })
+  check('low excursion coverage still shows table', a.suppressRiskComparison, false)
+  check('low excursion coverage warns',             a.blockers.length, 1)
 }
 
 // ---------- Fix 1: distinctDays cap ----------
@@ -151,16 +162,15 @@ check(
 
 // ---------- Fix 2: suppressRiskComparison on insufficient ----------
 
-// When the verdict is 'insufficient' but stop coverage is fine, the risk
-// comparison table must still be suppressed — printing per-level pass
-// percentages for an unestimable probability is worse than the stop-coverage
-// case, not better.
+// When the verdict is 'insufficient' the risk comparison table must be
+// suppressed even with perfect excursion coverage — printing per-level pass
+// percentages for an unestimable probability is the one case that warrants it.
 {
   const a = assessAdequacy({
     ciWidth: 43,
     tradeCount: 200,
     distinctDays: 60,
-    stopsPresent: 200,   // coverage = 1.0, well above MIN_STOP_COVERAGE
+    excursionsPresent: 200,   // coverage = 1.0, well above MIN_EXCURSION_COVERAGE
     bootstrapReps: BOOTSTRAP_REPS,
   })
   check('insufficient suppresses despite good coverage', a.suppressRiskComparison, true)
