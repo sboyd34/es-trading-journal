@@ -145,6 +145,15 @@ export function assessAdequacy(i: AdequacyInput): Adequacy {
     blockers.push('Confidence interval collapsed to zero width — the bootstrap produced no spread.')
   }
 
+  // A narrow CI over too few trading days measures resampling within one market
+  // regime, not accuracy across regimes. Cap at 'directional' so the headline
+  // never asserts precision the sample cannot support. This is a downgrade only —
+  // it must not upgrade an 'insufficient' verdict the bootstrap-integrity branches
+  // above already assigned.
+  if (distinctDays < MIN_DISTINCT_DAYS && verdict === 'adequate') {
+    verdict = 'directional'
+  }
+
   if (stopCoverage < MIN_STOP_COVERAGE) {
     blockers.push(
       `Only ${stopsPresent} of ${tradeCount} trades have a usable stop (${Math.round(stopCoverage * 100)}%). ` +
@@ -165,7 +174,7 @@ export function assessAdequacy(i: AdequacyInput): Adequacy {
     tradeCount,
     distinctDays,
     stopCoverage,
-    suppressRiskComparison: stopCoverage < MIN_STOP_COVERAGE,
+    suppressRiskComparison: stopCoverage < MIN_STOP_COVERAGE || verdict === 'insufficient',
     blockers,
   }
 }

@@ -122,5 +122,49 @@ check(
   check('live blocker ct', a.blockers.length, 2)
 }
 
+// ---------- Fix 1: distinctDays cap ----------
+
+// A narrow CI (adequate width) with too few trading days must be capped to
+// 'directional' — the tight interval reflects one regime, not real precision.
+check(
+  'narrow ci few days yields directional',
+  assessAdequacy({ ...healthy, distinctDays: 8, ciWidth: 5 }).verdict,
+  'directional',
+)
+
+// The same narrow CI with enough trading days must still reach 'adequate' —
+// the cap is a ceiling on 'adequate', not a blanket downgrade.
+check(
+  'narrow ci enough days still adequate',
+  assessAdequacy({ ...healthy, distinctDays: 20, ciWidth: 5 }).verdict,
+  'adequate',
+)
+
+// The cap must not upgrade: an 'insufficient' verdict from a short bootstrap
+// combined with few distinct days must stay 'insufficient', not become
+// 'directional'.
+check(
+  'short bootstrap few days stays insufficient',
+  assessAdequacy({ ...healthy, distinctDays: 8, ciWidth: 5, bootstrapReps: 250 }).verdict,
+  'insufficient',
+)
+
+// ---------- Fix 2: suppressRiskComparison on insufficient ----------
+
+// When the verdict is 'insufficient' but stop coverage is fine, the risk
+// comparison table must still be suppressed — printing per-level pass
+// percentages for an unestimable probability is worse than the stop-coverage
+// case, not better.
+{
+  const a = assessAdequacy({
+    ciWidth: 43,
+    tradeCount: 200,
+    distinctDays: 60,
+    stopsPresent: 200,   // coverage = 1.0, well above MIN_STOP_COVERAGE
+    bootstrapReps: BOOTSTRAP_REPS,
+  })
+  check('insufficient suppresses despite good coverage', a.suppressRiskComparison, true)
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

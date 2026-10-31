@@ -380,13 +380,20 @@ export default function EvalPage() {
           {result.adequacy.suppressRiskComparison && (
             <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl px-5 py-4">
               <h2 className="text-sm font-semibold text-gray-200">Risk Per Trade Comparison</h2>
-              <p className="text-xs text-gray-500 mt-1">
-                Hidden: only {result.adequacy.tradeCount > 0
-                  ? Math.round(result.adequacy.stopCoverage * 100)
-                  : 0}% of trades have a usable stop. For the rest, R is net P&amp;L ÷ the
-                assumed risk, so replaying them at a different risk level just rescales the
-                same number. The comparison would show arithmetic, not evidence.
-              </p>
+              {result.adequacy.stopCoverage < 0.5 ? (
+                <p className="text-xs text-gray-500 mt-1">
+                  Hidden: only {result.adequacy.tradeCount > 0
+                    ? Math.round(result.adequacy.stopCoverage * 100)
+                    : 0}% of trades have a usable stop. For the rest, R is net P&amp;L ÷ the
+                  assumed risk, so replaying them at a different risk level just rescales the
+                  same number. The comparison would show arithmetic, not evidence.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500 mt-1">
+                  Hidden: the pass probability itself is not estimable from this sample, so
+                  comparing risk levels would just propagate an interval too wide to act on.
+                </p>
+              )}
             </div>
           )}
         </>

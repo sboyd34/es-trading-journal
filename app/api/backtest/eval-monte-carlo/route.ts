@@ -300,11 +300,12 @@ export async function POST(request: NextRequest) {
 
     const rawTrades: RawRow[] = [...(liveTrades ?? [])] as RawRow[]
 
+    const usableTrades = rawTrades.filter(t => t.net_pnl != null && t.entry_price != null)
+
     let stopCount = 0
     let fallbackCount = 0
 
-    const samples: RSample[] = rawTrades
-      .filter(t => t.net_pnl != null && t.entry_price != null)
+    const samples: RSample[] = usableTrades
       .map(t => {
         const pv = POINT_VALUES[t.instrument ?? 'ES'] ?? 50
         let riskDollars: number
@@ -364,7 +365,7 @@ export async function POST(request: NextRequest) {
     const rComparison = buildComparison(samples, input)
 
     const distinctDays = new Set(
-      rawTrades.map(t => t.date).filter((d): d is string => d != null),
+      usableTrades.map(t => t.date).filter((d): d is string => d != null),
     ).size
 
     // A bootstrap failure must not fail the request. A broken error bar is not
