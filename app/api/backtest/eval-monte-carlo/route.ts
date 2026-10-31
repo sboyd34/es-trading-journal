@@ -61,6 +61,7 @@ export interface EvalMonteCarloResponse {
   bootstrapReps: number
   adequacy: Adequacy
   resolvedThreshold: number
+  resolvedPassLevel: number
 }
 
 function pct(sorted: number[], p: number): number {
@@ -410,6 +411,7 @@ export async function POST(request: NextRequest) {
       bootstrapReps:     bootstrapProps.length,
       adequacy,
       resolvedThreshold: input.currentThreshold,
+      resolvedPassLevel: input.startingEquity + input.profitTarget,
     } satisfies EvalMonteCarloResponse)
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

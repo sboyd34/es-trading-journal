@@ -61,9 +61,12 @@ export default function EvalPage() {
   const router = useRouter()
 
   // Simulation inputs — prefilled with live position
-  const [startingEquity,   setStartingEquity]   = useState(250_000)
-  const [profitTarget,     setProfitTarget]      = useState(15_000)
-  const [trailingDrawdown, setTrailingDrawdown]  = useState(6_500)
+  // Blank by default: the server derives these from the user's apex_accounts
+  // row. Sending a hardcoded 250K config against a different-sized account
+  // mixes two account geometries and makes the simulation incoherent.
+  const [startingEquity,   setStartingEquity]   = useState<number | null>(null)
+  const [profitTarget,     setProfitTarget]      = useState<number | null>(null)
+  const [trailingDrawdown, setTrailingDrawdown]  = useState<number | null>(null)
   const [riskPerTrade,     setRiskPerTrade]      = useState(500)
   const [tradesPerDay,     setTradesPerDay]      = useState(2.5)
   const [currentEquity,    setCurrentEquity]     = useState<number | null>(null)
@@ -83,8 +86,10 @@ export default function EvalPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          startingEquity, profitTarget, trailingDrawdown, riskPerTrade,
-          tradesPerDay, numSimulations,
+          riskPerTrade, tradesPerDay, numSimulations,
+          ...(startingEquity   !== null ? { startingEquity }   : {}),
+          ...(profitTarget     !== null ? { profitTarget }     : {}),
+          ...(trailingDrawdown !== null ? { trailingDrawdown } : {}),
           ...(currentEquity    !== null ? { currentEquity }    : {}),
           ...(currentThreshold !== null ? { currentThreshold } : {}),
         }),
@@ -114,7 +119,6 @@ export default function EvalPage() {
   }, [startingEquity, profitTarget, trailingDrawdown, riskPerTrade,
       tradesPerDay, currentEquity, currentThreshold, numSimulations])
 
-  const passLevel = startingEquity + profitTarget
 
   return (
     <div className="space-y-6">
@@ -122,7 +126,7 @@ export default function EvalPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Apex Eval Simulator</h1>
         <p className="text-sm text-gray-400 mt-1">
-          Monte Carlo pass-probability for the 250K evaluation using your actual R-multiple history
+          Monte Carlo pass-probability for your Apex evaluation using your actual R-multiple history
         </p>
       </div>
 
@@ -150,9 +154,9 @@ export default function EvalPage() {
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold text-gray-200">Simulation Inputs</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <NumInput label="Starting Equity ($)"   value={startingEquity}   onChange={v => setStartingEquity(v ?? 250_000)}   step={1000}  />
-          <NumInput label="Profit Target ($)"      value={profitTarget}     onChange={v => setProfitTarget(v ?? 15_000)}     step={500}   />
-          <NumInput label="Trailing Drawdown ($)"  value={trailingDrawdown} onChange={v => setTrailingDrawdown(v ?? 6_500)} step={100}   />
+          <NumInput label="Starting Equity ($) — blank uses your account size"      value={startingEquity}   onChange={setStartingEquity}   step={1000}  />
+          <NumInput label="Profit Target ($) — blank uses your account's target"    value={profitTarget}     onChange={setProfitTarget}     step={500}   />
+          <NumInput label="Trailing Drawdown ($) — blank uses your account's"       value={trailingDrawdown} onChange={setTrailingDrawdown} step={100}   />
           <NumInput label="Risk Per Trade ($)"     value={riskPerTrade}     onChange={v => setRiskPerTrade(v ?? 50)}         step={50}  min={50}  />
           <NumInput label="Trades Per Day"         value={tradesPerDay}     onChange={v => setTradesPerDay(v ?? 0.5)}        step={0.5} min={0.5} />
           <NumInput label="Current Equity ($) — blank uses live account balance"    value={currentEquity}    onChange={setCurrentEquity}    step={0.01}  />
@@ -292,7 +296,7 @@ export default function EvalPage() {
                   domain={['auto', 'auto']}
                 />
                 <ReferenceLine
-                  y={passLevel}
+                  y={result.resolvedPassLevel}
                   stroke="#10b981"
                   strokeWidth={1.5}
                   strokeDasharray="6 3"
