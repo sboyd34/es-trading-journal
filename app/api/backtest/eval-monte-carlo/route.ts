@@ -2,6 +2,13 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import {
+  computeUncertainty,
+  assessAdequacy,
+  BOOTSTRAP_REPS,
+  BOOTSTRAP_INNER_SIMS,
+  type Adequacy,
+} from '@/lib/eval-uncertainty'
 
 const POINT_VALUES: Record<string, number> = { ES: 50, MES: 5, NQ: 20, MNQ: 2 }
 const COMPARISON_RISKS = [250, 500, 750, 1000]
@@ -26,7 +33,6 @@ export interface EvalSimInput {
   currentEquity: number
   currentThreshold: number
   numSimulations: number
-  source: 'live' | 'combined'
 }
 
 export interface ComboComparison {
@@ -48,8 +54,11 @@ export interface EvalMonteCarloResponse {
   rComparison: ComboComparison[]
   rSampleSize: number
   riskInferenceNote: string
-  source: 'live' | 'combined'
-  combinedCaveat: boolean
+  passProbCI: [number, number]
+  mcStdErr: number
+  estimationStdErr: number
+  bootstrapReps: number
+  adequacy: Adequacy
 }
 
 function pct(sorted: number[], p: number): number {
@@ -196,6 +205,35 @@ function buildComparison(samples: RSample[], input: EvalSimInput): ComboComparis
   })
 }
 
+/**
+ * Outer bootstrap: resample the trade set with replacement and re-simulate,
+ * yielding one pass proportion per replicate.
+ *
+ * Resampling with replacement means some replicates draw zero of the trades
+ * that carry a real stop, or zero MFE-eligible ones. That is the mechanism,
+ * not a bug — the fragility of a small subset propagates into the interval
+ * instead of hiding behind the point estimate.
+ *
+ * Inner runs pass collectFan=false: the fan arrays are the bulk of the
+ * allocation cost and nothing here reads them.
+ */
+function bootstrapPassProps(samples: RSample[], input: EvalSimInput): number[] {
+  const n = samples.length
+  const innerInput: EvalSimInput = { ...input, numSimulations: BOOTSTRAP_INNER_SIMS }
+  const props: number[] = []
+
+  for (let b = 0; b < BOOTSTRAP_REPS; b++) {
+    const resampled: RSample[] = new Array(n)
+    for (let i = 0; i < n; i++) {
+      resampled[i] = samples[Math.floor(Math.random() * n)]
+    }
+    const r = simulate(resampled, innerInput, input.riskPerTrade, false)
+    props.push(r.passCount / BOOTSTRAP_INNER_SIMS)
+  }
+
+  return props
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -212,13 +250,12 @@ export async function POST(request: NextRequest) {
       currentEquity:    body.currentEquity     ?? 251_636.10,
       currentThreshold: body.currentThreshold  ?? 245_136.10,
       numSimulations:   Math.min(body.numSimulations ?? 10_000, 20_000),
-      source:           body.source === 'combined' ? 'combined' : 'live',
     }
 
     // Fetch live trades
     const { data: liveTrades } = await supabase
       .from('trades')
-      .select('net_pnl, entry_price, stop_loss, quantity, instrument, mfe')
+      .select('net_pnl, entry_price, stop_loss, quantity, instrument, mfe, date')
       .eq('user_id', user.id)
 
     type RawRow = {
@@ -228,17 +265,10 @@ export async function POST(request: NextRequest) {
       quantity: number
       instrument: string
       mfe: number | null
+      date: string | null
     }
 
     const rawTrades: RawRow[] = [...(liveTrades ?? [])] as RawRow[]
-
-    if (input.source === 'combined') {
-      const { data: btTrades } = await supabase
-        .from('backtest_trades')
-        .select('net_pnl, entry_price, stop_loss, quantity, instrument, mfe')
-        .eq('user_id', user.id)
-      ;(btTrades ?? []).forEach(t => rawTrades.push(t as RawRow))
-    }
 
     let stopCount = 0
     let fallbackCount = 0
@@ -303,6 +333,35 @@ export async function POST(request: NextRequest) {
 
     const rComparison = buildComparison(samples, input)
 
+    const distinctDays = new Set(
+      rawTrades.map(t => t.date).filter((d): d is string => d != null),
+    ).size
+
+    // A bootstrap failure must not fail the request. A broken error bar is not
+    // a reason to withhold the simulation — it is a reason to refuse to render
+    // a precise number, which assessAdequacy handles via bootstrapReps === 0.
+    let bootstrapProps: number[] = []
+    try {
+      bootstrapProps = bootstrapPassProps(samples, input)
+    } catch {
+      bootstrapProps = []
+    }
+
+    const pointEstimate = mainResult.passCount / numSimulations
+    const uncertainty = computeUncertainty({
+      bootstrapProps,
+      innerSims: BOOTSTRAP_INNER_SIMS,
+      pointEstimate,
+      numSimulations,
+    })
+    const adequacy = assessAdequacy({
+      ciWidth: uncertainty.ciWidth,
+      tradeCount: samples.length,
+      distinctDays,
+      stopsPresent: stopCount,
+      bootstrapReps: bootstrapProps.length,
+    })
+
     return NextResponse.json({
       passProb:         (mainResult.passCount / numSimulations) * 100,
       failProb:         (mainResult.failCount / numSimulations) * 100,
@@ -314,8 +373,11 @@ export async function POST(request: NextRequest) {
       rComparison,
       rSampleSize:      samples.length,
       riskInferenceNote,
-      source:           input.source,
-      combinedCaveat:   input.source === 'combined',
+      passProbCI:       uncertainty.passProbCI,
+      mcStdErr:         uncertainty.mcStdErr,
+      estimationStdErr: uncertainty.estimationStdErr,
+      bootstrapReps:    bootstrapProps.length,
+      adequacy,
     } satisfies EvalMonteCarloResponse)
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -64,7 +64,6 @@ export default function EvalPage() {
   const [currentEquity,    setCurrentEquity]     = useState(251_636.10)
   const [currentThreshold, setCurrentThreshold]  = useState(245_136.10)
   const [numSimulations,   setNumSimulations]    = useState(10_000)
-  const [source,           setSource]            = useState<'live' | 'combined'>('live')
 
   const [result,       setResult]       = useState<EvalMonteCarloResponse | null>(null)
   const [loading,      setLoading]      = useState(false)
@@ -80,7 +79,7 @@ export default function EvalPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           startingEquity, profitTarget, trailingDrawdown, riskPerTrade,
-          tradesPerDay, currentEquity, currentThreshold, numSimulations, source,
+          tradesPerDay, currentEquity, currentThreshold, numSimulations,
         }),
       })
       const json = await res.json()
@@ -92,7 +91,6 @@ export default function EvalPage() {
         localStorage.setItem(LS_KEY, JSON.stringify({
           passProb: (json as EvalMonteCarloResponse).passProb,
           riskPerTrade,
-          source: (json as EvalMonteCarloResponse).source,
           runAt: new Date().toISOString(),
         }))
       } catch {
@@ -104,7 +102,7 @@ export default function EvalPage() {
       setLoading(false)
     }
   }, [startingEquity, profitTarget, trailingDrawdown, riskPerTrade,
-      tradesPerDay, currentEquity, currentThreshold, numSimulations, source])
+      tradesPerDay, currentEquity, currentThreshold, numSimulations])
 
   const passLevel = startingEquity + profitTarget
 
@@ -158,17 +156,6 @@ export default function EvalPage() {
           />
         </div>
         <div className="flex items-end gap-4 flex-wrap">
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">R Distribution Source</label>
-            <select
-              value={source}
-              onChange={e => setSource(e.target.value as 'live' | 'combined')}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="live">Live trades only (recommended)</option>
-              <option value="combined">Combined — live + backtest trades</option>
-            </select>
-          </div>
           <button
             onClick={runSimulation}
             disabled={loading}
@@ -187,15 +174,6 @@ export default function EvalPage() {
 
       {result && (
         <>
-          {/* Combined caveat */}
-          {result.combinedCaveat && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2.5 text-xs text-amber-400">
-              <span className="font-semibold">Combined source note:</span> Manual-replay backtest
-              trades tend to have hindsight-optimistic MAE/MFE and may flatter the R distribution.
-              Live-only is the more honest benchmark.
-            </div>
-          )}
-
           {/* Stability caveat */}
           <div className="bg-gray-800/30 border border-gray-700/40 rounded-lg px-4 py-2.5 text-xs text-gray-500">
             <span className="text-gray-400 font-medium">Important:</span> This simulator assumes

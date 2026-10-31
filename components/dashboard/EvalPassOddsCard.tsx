@@ -9,7 +9,6 @@ const LS_KEY = 'apex.eval.lastResult'
 interface LastRun {
   passProb: number
   riskPerTrade: number
-  source: 'live' | 'combined'
   runAt: string
 }
 
@@ -46,7 +45,7 @@ export default function EvalPassOddsCard() {
           {lastRun.passProb.toFixed(1)}%
         </p>
         <p className="text-[10px] text-gray-600 mt-1">
-          ${lastRun.riskPerTrade}/trade · {lastRun.source === 'live' ? 'live trades' : 'combined'} · {ageLabel}
+          ${lastRun.riskPerTrade}/trade · {ageLabel}
         </p>
       </div>
       <button
