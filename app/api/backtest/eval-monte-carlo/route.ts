@@ -244,13 +244,18 @@ export async function POST(request: NextRequest) {
 
     // Defaults come from the user's actual Apex account rather than a
     // hardcoded snapshot. Most-recently-updated row wins when several exist.
-    const { data: acct } = await supabase
+    const { data: acct, error: acctError } = await supabase
       .from('apex_accounts')
       .select('account_size, starting_balance, current_balance, highest_balance')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle()
+
+    // A failed lookup still degrades to APEX_CONFIGS defaults rather than
+    // failing the request, but it must not do so silently — otherwise a
+    // user's real account size is replaced by a generic 250K with no signal.
+    if (acctError) console.error('[eval-monte-carlo] apex_accounts lookup failed:', acctError)
 
     const acctSize = (acct?.account_size ?? 250_000) as AccountSize
     const cfg = APEX_CONFIGS[acctSize] ?? APEX_CONFIGS[250_000]

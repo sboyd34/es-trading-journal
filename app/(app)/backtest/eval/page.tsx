@@ -31,8 +31,8 @@ function NumInput({
   label, value, onChange, step = 1, min, className,
 }: {
   label: string
-  value: number
-  onChange: (v: number) => void
+  value: number | null
+  onChange: (v: number | null) => void
   step?: number
   min?: number
   className?: string
@@ -44,8 +44,13 @@ function NumInput({
         type="number"
         step={step}
         min={min}
-        value={value}
-        onChange={e => onChange(parseFloat(e.target.value) || 0)}
+        value={value ?? ''}
+        onChange={e => {
+          const raw = e.target.value
+          if (raw === '') return onChange(null)
+          const n = parseFloat(raw)
+          onChange(Number.isNaN(n) ? null : n)
+        }}
         className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
     </div>
@@ -142,17 +147,17 @@ export default function EvalPage() {
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold text-gray-200">Simulation Inputs</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <NumInput label="Starting Equity ($)"   value={startingEquity}   onChange={setStartingEquity}   step={1000}  />
-          <NumInput label="Profit Target ($)"      value={profitTarget}     onChange={setProfitTarget}     step={500}   />
-          <NumInput label="Trailing Drawdown ($)"  value={trailingDrawdown} onChange={setTrailingDrawdown} step={100}   />
-          <NumInput label="Risk Per Trade ($)"     value={riskPerTrade}     onChange={setRiskPerTrade}     step={50}  min={50}  />
-          <NumInput label="Trades Per Day"         value={tradesPerDay}     onChange={setTradesPerDay}     step={0.5} min={0.5} />
-          <NumInput label="Current Equity ($) — blank uses live account balance"    value={currentEquity    ?? 0} onChange={setCurrentEquity}    step={0.01}  />
-          <NumInput label="Current Threshold ($) — blank uses live account balance" value={currentThreshold ?? 0} onChange={setCurrentThreshold} step={0.01}  />
+          <NumInput label="Starting Equity ($)"   value={startingEquity}   onChange={v => setStartingEquity(v ?? 250_000)}   step={1000}  />
+          <NumInput label="Profit Target ($)"      value={profitTarget}     onChange={v => setProfitTarget(v ?? 15_000)}     step={500}   />
+          <NumInput label="Trailing Drawdown ($)"  value={trailingDrawdown} onChange={v => setTrailingDrawdown(v ?? 6_500)} step={100}   />
+          <NumInput label="Risk Per Trade ($)"     value={riskPerTrade}     onChange={v => setRiskPerTrade(v ?? 50)}         step={50}  min={50}  />
+          <NumInput label="Trades Per Day"         value={tradesPerDay}     onChange={v => setTradesPerDay(v ?? 0.5)}        step={0.5} min={0.5} />
+          <NumInput label="Current Equity ($) — blank uses live account balance"    value={currentEquity}    onChange={setCurrentEquity}    step={0.01}  />
+          <NumInput label="Current Threshold ($) — blank uses live account balance" value={currentThreshold} onChange={setCurrentThreshold} step={0.01}  />
           <NumInput
             label="Simulations"
             value={numSimulations}
-            onChange={v => setNumSimulations(Math.min(Math.max(Math.round(v), 1_000), 20_000))}
+            onChange={v => setNumSimulations(Math.min(Math.max(Math.round(v ?? 1_000), 1_000), 20_000))}
             step={1000}
             min={1000}
           />
