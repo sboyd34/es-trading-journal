@@ -25,6 +25,13 @@ const MOODS = ['calm', 'confident', 'anxious', 'FOMO', 'revenge', 'hesitant', 'b
 const GRADES = ['A', 'B', 'C'] as const
 const BUCKET = 'trade-charts'
 
+// Flag a stop wider than this multiple of ATR-at-entry as probably mistyped.
+// Calibrated on the journal: real stops run 0.16x–1.75x ATR (median 0.48x), while
+// a transposed digit lands at 8x+. 3x clears every genuine stop with headroom and
+// still catches the typo class by a wide margin. Soft warning, never a block —
+// a deliberately wide stop is legal, it just deserves a second look.
+const STOP_ATR_MULTIPLE_LIMIT = 3
+
 // ─── Main form ────────────────────────────────────────────────────────────────
 
 export default function TradeAnnotationForm({
@@ -98,12 +105,19 @@ export default function TradeAnnotationForm({
   const plan = useMemo(() => {
     const sl = parseFloat(stopLoss)
     const tp = parseFloat(target)
+    const atr = parseFloat(atrAtEntry)
     const { entry_price: entry, exit_price: exit } = trade
     const dir = trade.direction === 'long' ? 1 : -1
 
     if (!Number.isFinite(sl)) return null
     const riskPts = Math.abs(entry - sl)
     if (riskPts < 0.01) return null
+
+    // Magnitude sanity check: a transposed digit (7699 for 7669) stays on the
+    // correct side of entry, so the direction check above can't see it. Scale is
+    // the only tell. Silent when ATR isn't recorded — there's no yardstick then.
+    const atrMultiple = Number.isFinite(atr) && atr > 0 ? riskPts / atr : null
+    const stopOutsized = atrMultiple !== null && atrMultiple > STOP_ATR_MULTIPLE_LIMIT
 
     // A stop must sit on the losing side of entry, a target on the winning side.
     const stopInverted = dir === 1 ? sl >= entry : sl <= entry
@@ -123,8 +137,19 @@ export default function TradeAnnotationForm({
     // Fraction of the planned move actually captured (winners only).
     const capture = rr !== null && rr > 0 && realizedR > 0 ? realizedR / rr : null
 
-    return { riskPts, rewardPts, rr, realizedR, outcome, capture, stopInverted, targetInverted }
-  }, [stopLoss, target, trade])
+    return {
+      riskPts,
+      rewardPts,
+      rr,
+      realizedR,
+      outcome,
+      capture,
+      stopInverted,
+      targetInverted,
+      atrMultiple,
+      stopOutsized,
+    }
+  }, [stopLoss, target, atrAtEntry, trade])
 
   // ── Voice recording ──────────────────────────────────────────────────────
 
@@ -346,7 +371,11 @@ export default function TradeAnnotationForm({
                 placeholder="Price level"
                 className={cn(
                   'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500',
-                  plan?.stopInverted ? 'border-red-500/70' : 'border-gray-700'
+                  plan?.stopInverted
+                    ? 'border-red-500/70'
+                    : plan?.stopOutsized
+                      ? 'border-amber-500/70'
+                      : 'border-gray-700'
                 )}
               />
             </div>
@@ -374,6 +403,13 @@ export default function TradeAnnotationForm({
           {plan?.targetInverted && (
             <p className="mt-2 text-xs text-red-400">
               Target must be {trade.direction === 'long' ? 'above' : 'below'} entry ({trade.entry_price.toFixed(2)}) on a {trade.direction}.
+            </p>
+          )}
+          {/* Scale check — catches a transposed digit, which stays on the correct
+              side of entry and so slips past the direction check above. */}
+          {!plan?.stopInverted && plan?.stopOutsized && (
+            <p className="mt-2 text-xs text-amber-400">
+              {plan.riskPts.toFixed(2)} pt stop is {plan.atrMultiple?.toFixed(1)}× the {parseFloat(atrAtEntry).toFixed(2)} ATR at entry. Double-check the price level — did you mean a level closer to {trade.entry_price.toFixed(2)}?
             </p>
           )}
 
