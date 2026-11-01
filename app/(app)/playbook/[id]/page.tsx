@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn, getGradeColor, getMoodEmoji } from '@/lib/utils'
 import EquityCurve from '@/components/dashboard/EquityCurve'
 import { classifyWindow, ctTimeLabel } from '@/lib/trade-flags'
+import { POINT_VALUES } from '@/lib/tradovate-parser'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import {
@@ -188,11 +189,13 @@ export default function PlaybookSetupDetailPage() {
     const profitFactor = grossLosses > 0 ? grossWins / grossLosses : grossWins > 0 ? Infinity : 0
     const expectancy = (winRate / 100) * avgWin - (1 - winRate / 100) * avgLoss
 
-    // R-multiple: average ratio of net_pnl to initial risk per trade. Risk = |entry - stop| * qty * 50.
+    // R-multiple: average ratio of net_pnl to initial risk per trade.
+    // Risk = |entry - stop| * qty * $/pt, keyed off the instrument (ES 50, MES 5, NQ 20, MNQ 2).
     const rMultiples = trades
       .map((t) => {
         if (!t.stop_loss) return null
-        const riskPerContract = Math.abs(t.entry_price - t.stop_loss) * 50
+        const pointValue = POINT_VALUES[t.instrument || 'ES'] ?? 50
+        const riskPerContract = Math.abs(t.entry_price - t.stop_loss) * pointValue
         const totalRisk = riskPerContract * t.quantity
         if (totalRisk <= 0) return null
         return t.net_pnl / totalRisk
