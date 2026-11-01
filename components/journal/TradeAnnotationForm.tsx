@@ -370,12 +370,15 @@ export default function TradeAnnotationForm({
                 onChange={(e) => setStopLoss(e.target.value)}
                 placeholder="Price level"
                 className={cn(
-                  'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2',
+                  // Ring color tracks the border. The focus ring paints over the
+                  // border, so a blue ring on a warned field hides the warning
+                  // while you're typing in it — precisely when it matters.
                   plan?.stopInverted
-                    ? 'border-red-500/70'
+                    ? 'border-red-500/70 focus:ring-red-500'
                     : plan?.stopOutsized
-                      ? 'border-amber-500/70'
-                      : 'border-gray-700'
+                      ? 'border-amber-500/70 focus:ring-amber-500'
+                      : 'border-gray-700 focus:ring-blue-500'
                 )}
               />
             </div>
@@ -388,8 +391,10 @@ export default function TradeAnnotationForm({
                 onChange={(e) => setTarget(e.target.value)}
                 placeholder="Price level"
                 className={cn(
-                  'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500',
-                  plan?.targetInverted ? 'border-red-500/70' : 'border-gray-700'
+                  'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2',
+                  plan?.targetInverted
+                    ? 'border-red-500/70 focus:ring-red-500'
+                    : 'border-gray-700 focus:ring-blue-500'
                 )}
               />
             </div>
