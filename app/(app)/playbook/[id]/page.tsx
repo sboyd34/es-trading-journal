@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn, getGradeColor, getMoodEmoji } from '@/lib/utils'
 import EquityCurve from '@/components/dashboard/EquityCurve'
 import { classifyWindow, ctTimeLabel } from '@/lib/trade-flags'
-import { POINT_VALUES } from '@/lib/tradovate-parser'
+import { POINT_VALUES } from '@/lib/instruments'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import {

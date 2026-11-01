@@ -28,6 +28,19 @@
 // Do not reintroduce per-trade stop denominators here without also making the
 // coverage 100%. Mixed denominators are worse than either consistent extreme.
 
+// DELIBERATE duplicate of lib/instruments.ts. Everywhere else in the app
+// imports that shared table — this file is the one exception, and it has to be.
+//
+// scripts/test-eval-samples.mts runs this module directly under bare node, with
+// no bundler. That rules out both ways of sharing: `@/lib/instruments` because
+// node cannot resolve the tsconfig path alias, and `./instruments.ts` because
+// tsconfig has allowImportingTsExtensions off, so the explicit extension node
+// requires is the one thing tsc rejects. Extensionless `./instruments` fails
+// with ERR_MODULE_NOT_FOUND — verified, not assumed.
+//
+// Keeping this module dependency-free is what makes it testable outside Next,
+// which is worth more than deduplicating four numbers. If you change a point
+// value in lib/instruments.ts, change it here too.
 export const POINT_VALUES: Record<string, number> = { ES: 50, MES: 5, NQ: 20, MNQ: 2 }
 
 export interface RSample {

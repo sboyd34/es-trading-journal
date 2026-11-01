@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { APEX_CONFIGS, ACCOUNT_SIZES, RISK_RULES, type AccountSize } from '@/lib/apex-config'
-import { POINT_VALUES } from '@/lib/tradovate-parser'
+import { POINT_VALUES } from '@/lib/instruments'
 import type { ApexAccount } from '@/types'
 
 type Instrument = 'ES' | 'MES' | 'NQ' | 'MNQ'

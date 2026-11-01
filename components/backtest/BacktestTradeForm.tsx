@@ -7,10 +7,10 @@ import { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
 import toast from 'react-hot-toast'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { POINT_VALUES } from '@/lib/instruments'
 
 const MOODS = ['calm', 'confident', 'anxious', 'FOMO', 'revenge', 'hesitant', 'bored', 'overconfident'] as const
 const GRADES = ['A', 'B', 'C'] as const
-const POINT_VALUES: Record<string, number> = { ES: 50, MES: 5, NQ: 20, MNQ: 2 }
 const COMMISSION_PER_CONTRACT = 4.10
 
 interface Props {

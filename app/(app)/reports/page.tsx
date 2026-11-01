@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Trade, RiskRules } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
-import { POINT_VALUES } from '@/lib/tradovate-parser'
+import { POINT_VALUES } from '@/lib/instruments'
 import { TICK_SIZE } from '@/lib/excursions'
 import { format, parseISO, getHours, startOfWeek, startOfMonth, subDays } from 'date-fns'
 import {

@@ -18,12 +18,12 @@ export interface ParsedTrade {
   broker_account_id: string | null
 }
 
-export const POINT_VALUES: Record<string, number> = {
-  ES: 50,
-  NQ: 20,
-  MES: 5,
-  MNQ: 2,
-}
+// Lives in lib/instruments.ts now — re-exported here so the server-side
+// consumers that already pull the CSV/fill helpers from this module keep their
+// existing import. Client components should import from lib/instruments
+// directly: this file imports papaparse, and the table alone is not worth it.
+export { POINT_VALUES } from './instruments'
+import { POINT_VALUES } from './instruments'
 
 // All-in round-turn fees per contract: broker commission + exchange + NFA + clearing.
 // Single source of truth for ALL import paths — the CSV importer

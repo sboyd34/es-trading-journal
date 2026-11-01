@@ -14,8 +14,7 @@ import { format } from 'date-fns'
 import { getTodayChicagoDateString } from '@/lib/eod-gate'
 import { Plus, Trash2, Edit2, Brain, TrendingUp, TrendingDown } from 'lucide-react'
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
-
-const POINT_VALUES: Record<string, number> = { ES: 50, MES: 5, NQ: 20, MNQ: 2 }
+import { POINT_VALUES } from '@/lib/instruments'
 
 type TopTab = 'blind' | 'manual'
 
