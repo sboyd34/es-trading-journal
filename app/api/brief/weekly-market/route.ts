@@ -31,14 +31,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { brief?: unknown; weekStartDate?: unknown }
+  let body: { brief?: unknown; weekStartDate?: unknown; planJson?: unknown }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { brief, weekStartDate } = body
+  const { brief, weekStartDate, planJson } = body
 
   if (!brief || typeof brief !== 'string') {
     return NextResponse.json({ error: 'brief (string) is required' }, { status: 400 })
@@ -46,6 +46,20 @@ export async function POST(request: NextRequest) {
   if (typeof weekStartDate !== 'string' || !isMonday(weekStartDate)) {
     return NextResponse.json(
       { error: 'weekStartDate must be a YYYY-MM-DD Monday' },
+      { status: 400 }
+    )
+  }
+  // Optional: a request without planJson is still valid, which is what keeps
+  // briefs posted before the column existed working. But a planJson that is
+  // present and the wrong shape is rejected rather than stored -- the cards
+  // read it by key, so an array or a string would render as nothing at all and
+  // look like a brief that simply had no plan.
+  if (
+    planJson !== undefined &&
+    (typeof planJson !== 'object' || planJson === null || Array.isArray(planJson))
+  ) {
+    return NextResponse.json(
+      { error: 'planJson must be an object when provided' },
       { status: 400 }
     )
   }
@@ -61,7 +75,18 @@ export async function POST(request: NextRequest) {
   const { error: upsertError } = await supabase
     .from('weekly_market_briefs')
     .upsert(
-      { user_id: userId, week_start_date: weekStartDate, brief_text: brief },
+      // `plan_json: null` rather than omitting the key on an absent planJson.
+      // One row per week, and every post carries the whole brief, so the
+      // request is the full truth for that week. Omitting the key would let a
+      // re-post whose week-ahead half failed keep the previous plan_json
+      // alongside a brief_text that no longer contains those sections --
+      // cards rendering content absent from the source of truth.
+      {
+        user_id: userId,
+        week_start_date: weekStartDate,
+        brief_text: brief,
+        plan_json: planJson ?? null,
+      },
       { onConflict: 'user_id,week_start_date' }
     )
 
