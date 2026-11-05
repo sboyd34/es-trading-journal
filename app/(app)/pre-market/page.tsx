@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { DailySession, PreMarketBrief } from '@/types'
-import { format, subDays, parseISO } from 'date-fns'
+import { format, subDays, parseISO, startOfWeek, nextMonday } from 'date-fns'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 import {
@@ -21,6 +21,8 @@ import {
   Newspaper,
   ExternalLink,
   CalendarClock,
+  Activity,
+  BookOpen,
 } from 'lucide-react'
 import MarketStateCard from '@/components/market/MarketStateCard'
 import PositionSizer from '@/components/pre-market/PositionSizer'
@@ -90,11 +92,18 @@ function chicagoNowParts(): { date: string; weekday: string; hour: number; minut
   }
 }
 
-interface BriefSection {
-  key: keyof PreMarketBrief
+// The parts of a section a card actually draws. Split out from BriefSection so
+// the weekly brief — whose keys are plain strings off a jsonb column, not
+// PreMarketBrief fields — renders through the same card without widening the
+// daily SECTIONS key type and losing its typo protection.
+interface CardFace {
   label: string
   icon: React.ReactNode
   color: string
+}
+
+interface BriefSection extends CardFace {
+  key: keyof PreMarketBrief
 }
 
 const SECTIONS: BriefSection[] = [
@@ -107,7 +116,24 @@ const SECTIONS: BriefSection[] = [
   { key: 'risk_level', label: 'Risk Level', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400' },
 ]
 
-function BriefCard({ section, value }: { section: BriefSection; value: string }) {
+// Keys and order of the week-ahead brief's plan_json, written by the Sunday
+// generator in claude-trading-assistant. Order matches the order they are
+// rendered in the text brief, so the cards and the prose read the same way.
+interface WeeklySection extends CardFace {
+  key: string
+}
+
+const WEEKLY_SECTIONS: WeeklySection[] = [
+  { key: 'structural_tilt', label: 'Structural Tilt', icon: <TrendingUp className="h-4 w-4" />, color: 'text-blue-400' },
+  { key: 'level_map', label: 'Level Map', icon: <MapPin className="h-4 w-4" />, color: 'text-purple-400' },
+  { key: 'catalysts', label: 'Catalysts', icon: <CalendarClock className="h-4 w-4" />, color: 'text-yellow-400' },
+  { key: 'expected_range', label: 'Expected Range', icon: <Target className="h-4 w-4" />, color: 'text-orange-400' },
+  { key: 'scenario_paths', label: 'Scenario Paths', icon: <GitBranch className="h-4 w-4" />, color: 'text-emerald-400' },
+  { key: 'volatility_regime', label: 'Volatility Regime', icon: <Activity className="h-4 w-4" />, color: 'text-cyan-400' },
+  { key: 'playbook_fit', label: 'Playbook Fit', icon: <BookOpen className="h-4 w-4" />, color: 'text-indigo-400' },
+]
+
+function BriefCard({ section, value }: { section: CardFace; value: string }) {
   return (
     <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4">
       <div className={cn('flex items-center gap-2 mb-2', section.color)}>
@@ -131,9 +157,23 @@ export default function PreMarketPage() {
   const [upcomingEarnings, setUpcomingEarnings] = useState<UpcomingEarning[]>([])
   const [earningsLoading, setEarningsLoading] = useState(true)
   const [autoImported, setAutoImported] = useState(false)
+  const [weeklyPlan, setWeeklyPlan] = useState<Record<string, string> | null>(null)
+  const [weeklyExpanded, setWeeklyExpanded] = useState(false)
 
   const { date: today, weekday, hour, minute } = chicagoNowParts()
   const yesterday = format(subDays(parseISO(today), 1), 'yyyy-MM-dd')
+  // The week-ahead brief is keyed to the Monday of the week it describes, and
+  // the Sunday 08:30 CT run posts it for the Monday ahead. So the week in force
+  // is this week's Monday on a weekday and the coming Monday on the weekend —
+  // Saturday and Sunday are preparing for the same session Monday is. No
+  // fallback to an older week: a closed week's plan shown as the current one is
+  // worse than no plan at all.
+  const weekMonday = format(
+    weekday === 'Sat' || weekday === 'Sun'
+      ? nextMonday(parseISO(today))
+      : startOfWeek(parseISO(today), { weekStartsOn: 1 }),
+    'yyyy-MM-dd'
+  )
 
   const supabase = createClient()
 
@@ -142,7 +182,7 @@ export default function PreMarketPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const [{ data: sessions }, { data: briefs }] = await Promise.all([
+    const [{ data: sessions }, { data: briefs }, { data: weekly }] = await Promise.all([
       supabase
         .from('daily_sessions')
         .select('*')
@@ -153,6 +193,12 @@ export default function PreMarketPage() {
         .select('brief_text, plan_json, date')
         .eq('user_id', user.id)
         .eq('date', today)
+        .maybeSingle(),
+      supabase
+        .from('weekly_market_briefs')
+        .select('plan_json')
+        .eq('user_id', user.id)
+        .eq('week_start_date', weekMonday)
         .maybeSingle(),
     ])
 
@@ -173,8 +219,10 @@ export default function PreMarketPage() {
       }
     }
 
+    setWeeklyPlan(weekly?.plan_json ?? null)
+
     setLoadingSession(false)
-  }, [supabase, today, yesterday])
+  }, [supabase, today, yesterday, weekMonday])
 
   useEffect(() => {
     loadSessions()
@@ -245,6 +293,20 @@ export default function PreMarketPage() {
   const afterBriefCutoff = hour > 8 || (hour === 8 && minute >= 25)
   const showMissingBriefWarning =
     !loadingSession && isWeekday && afterBriefCutoff && !autoImported
+
+  // Only the sections the generator actually wrote. A section whose build
+  // failed is absent from plan_json rather than present and empty, so filtering
+  // on content is what keeps a half-built brief from rendering blank cards.
+  const weeklyCards = useMemo(
+    () =>
+      weeklyPlan
+        ? WEEKLY_SECTIONS.filter((s) => (weeklyPlan[s.key] || '').trim()).map((s) => ({
+            section: s,
+            value: weeklyPlan[s.key].trim(),
+          }))
+        : [],
+    [weeklyPlan]
+  )
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -439,6 +501,36 @@ export default function PreMarketPage() {
         <div className="text-center py-10 bg-gray-800/30 border border-gray-700/50 rounded-xl">
           <p className="text-gray-400 font-medium">No brief generated yet</p>
           <p className="text-gray-600 text-sm mt-1">Add your market observations above and click Generate Brief</p>
+        </div>
+      )}
+
+      {/* Week ahead (collapsible) — silent when the Sunday brief hasn't landed */}
+      {weeklyCards.length > 0 && (
+        <div className="bg-gray-800/30 border border-gray-700/30 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setWeeklyExpanded(!weeklyExpanded)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-800/50 transition"
+          >
+            <span className="text-sm font-medium text-gray-400">Week Ahead — week of {format(parseISO(weekMonday), 'MMMM d')}</span>
+            {weeklyExpanded ? (
+              <ChevronUp className="h-4 w-4 text-gray-500" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-gray-500" />
+            )}
+          </button>
+          {weeklyExpanded && (
+            <div className="px-5 pb-5 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {weeklyCards.map(({ section, value }) => (
+                  <BriefCard key={section.key} section={section} value={value} />
+                ))}
+              </div>
+              <p className="text-xs text-gray-600">
+                Context for the week. Adds nothing to the VETO list and changes no trigger — the
+                15m/5m handoff conditions and risk caps stay exactly as written.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
