@@ -6,7 +6,7 @@ import { Newspaper, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import { addDays, chicagoHour, chicagoToday, currentMonday, weekdayOf } from '@/lib/ct-week'
 
 // The page's week selector follows the ISO convention, so on Sunday it points
-// at the week that just ended. The Sunday 08:00 job files its brief under the
+// at the week that just ended. The Sunday 08:30 job files its brief under the
 // *upcoming* Monday — the week the brief actually describes — so on the one
 // night the brief matters most, the page looks in the wrong slot and shows
 // nothing. Fall forward here, in the panel only: `weekStart` is shared page
@@ -22,7 +22,16 @@ import { addDays, chicagoHour, chicagoToday, currentMonday, weekdayOf } from '@/
 //
 // Only the page's own default is redirected — if a week was picked by hand,
 // it is honoured as-is.
-const BRIEF_READY_HOUR = 9 // CT; job starts 08:00 CT and takes ~13 min
+// CT. The job starts 08:30 and takes ~13 min, so the brief is normally filed by
+// 08:43 and 10:00 leaves an hour of slack for a slow fetch. This was 9 back when
+// the job ran at 08:00 — a 47-minute margin that moving the job to 08:30 quietly
+// cut to 17, close enough that one slow run would fall forward to a week not yet
+// written and fire the missing-brief banner on a Sunday that was actually fine.
+//
+// A fixed hour is sound here only because the writer can never be early: the
+// job's --skip-if-done guard refuses to build before its scheduled Sunday
+// moment, so nothing files the upcoming week ahead of 08:30.
+const BRIEF_READY_HOUR = 10
 
 function briefWeekFor(weekStart: string): string {
   const ready = weekdayOf(chicagoToday()) === 0 && chicagoHour() >= BRIEF_READY_HOUR
@@ -75,8 +84,9 @@ export default function MarketBriefPanel({ weekStart }: { weekStart: string }) {
           </h2>
         </div>
         <p className="mt-2 text-sm text-gray-400">
-          No weekly market brief for this week. The Sunday 08:00 CT job may not have run —
-          check <code className="text-gray-300">briefs/launchd_weekly_error.log</code>.
+          No weekly market brief for this week. The Sunday 08:30 CT job may not have
+          run — it retries on the next boot or login. If it persists, check{' '}
+          <code className="text-gray-300">briefs/launchd_weekly_error.log</code>.
         </p>
       </section>
     )

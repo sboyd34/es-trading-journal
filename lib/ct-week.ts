@@ -9,7 +9,7 @@
  * drifted apart.
  *
  * Anchored to America/Chicago, never the viewer's clock. The Sunday brief job
- * runs at 08:00 CT and files under a CT week, and trades are stamped with CT
+ * runs at 08:30 CT and files under a CT week, and trades are stamped with CT
  * dates — so a viewer in Eastern or Pacific has to get the same answer as the
  * machine that wrote the data. Reading local time put the page a full week off
  * in the hours where the local date and the CT date disagree, which defaulted
