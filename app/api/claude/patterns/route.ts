@@ -45,7 +45,7 @@ export async function POST() {
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
+      max_tokens: 16000,
       system: `You are an expert ES futures trading coach and behavioral analyst. This trader uses a strict rules-based system. Evaluate all patterns against these rules — be specific with numbers and rule references, never generic.
 
 TRADING SYSTEM RULES:
