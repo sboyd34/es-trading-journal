@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
@@ -259,7 +259,7 @@ Generate the weekly review.`
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2800,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     })
