@@ -12,6 +12,43 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
+// Structured-output schema: the API constrains decoding to this shape, so the
+// reply is always parseable JSON. Mirrors WeeklyReviewContent in types/index.ts.
+// Strict mode needs every property required and additionalProperties:false;
+// optional fields are expressed as nullable instead.
+const str = { type: 'string' }
+const strList = { type: 'array', items: str }
+const obj = (properties: Record<string, unknown>) => ({
+  type: 'object',
+  properties,
+  required: Object.keys(properties),
+  additionalProperties: false,
+})
+const REVIEW_SCHEMA = obj({
+  summary: str,
+  system_compliance: obj({ score: { type: 'integer' }, wins: strList, violations: strList }),
+  setup_breakdown: {
+    type: 'array',
+    items: obj({
+      setup: str,
+      trades: { type: 'integer' },
+      win_rate: { type: 'number' },
+      pnl: { type: 'number' },
+      key_insight: str,
+    }),
+  },
+  emotional_trends: str,
+  excursion_analysis: {
+    anyOf: [obj({ verdict: str, focus: { type: ['string', 'null'] } }), { type: 'null' }],
+  },
+  discipline_trend: obj({
+    days: { type: 'array', items: obj({ date: str, score: { type: ['number', 'null'] } }) },
+    narrative: str,
+  }),
+  top_lessons: strList,
+  next_week_focus: strList,
+})
+
 function dateOnly(s: string): Date {
   const [y, m, d] = s.split('-').map(Number)
   return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1))
@@ -262,24 +299,23 @@ Generate the weekly review.`
       max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
+      output_config: { format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
     })
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
-    const cleaned = responseText
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```\s*$/i, '')
-      .trim()
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      console.error('Failed to parse weekly review response:', responseText)
-      return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
+    // The schema guarantees valid JSON only for a reply that finished. A cut-off
+    // or refused reply is still partial text, so name the cause instead of
+    // letting JSON.parse surface it as a generic parse error.
+    if (message.stop_reason === 'max_tokens' || message.stop_reason === 'refusal') {
+      console.error('Weekly review stopped early:', message.stop_reason, message.usage)
+      return NextResponse.json({ error: `AI response incomplete (${message.stop_reason})` }, { status: 500 })
     }
 
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     let review
     try {
-      review = JSON.parse(jsonMatch[0])
+      review = JSON.parse(responseText)
     } catch {
+      console.error('Failed to parse weekly review response:', responseText)
       return NextResponse.json({ error: 'Invalid JSON in AI response' }, { status: 500 })
     }
 
