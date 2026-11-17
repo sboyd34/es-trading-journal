@@ -8,6 +8,35 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
+// Structured-output schema: the API constrains decoding to this shape, so the
+// reply is always parseable JSON. Mirrors the Analysis type in
+// app/(app)/patterns/page.tsx. Strict mode needs every property required and
+// additionalProperties:false.
+const str = { type: 'string' }
+const strList = { type: 'array', items: str }
+const obj = (properties: Record<string, unknown>) => ({
+  type: 'object',
+  properties,
+  required: Object.keys(properties),
+  additionalProperties: false,
+})
+const ANALYSIS_SCHEMA = obj({
+  summary: str,
+  patterns: {
+    type: 'array',
+    items: obj({
+      title: str,
+      type: { type: 'string', enum: ['behavioral', 'statistical', 'timing', 'risk', 'system-compliance'] },
+      severity: { type: 'string', enum: ['positive', 'warning', 'critical'] },
+      finding: str,
+      recommendation: str,
+    }),
+  },
+  strengths: strList,
+  blind_spots: strList,
+  priority_focus: str,
+})
+
 export async function POST() {
   try {
     const supabase = await createClient()
@@ -90,21 +119,25 @@ Return ONLY valid JSON with this structure:
           content: `Analyze my ${trades.length} ES futures trades:\n\n${JSON.stringify(tradeSummary, null, 2)}\n\nIdentify behavioral and statistical patterns. Be specific with percentages and dollar amounts.`,
         },
       ],
+      output_config: { format: { type: 'json_schema', schema: ANALYSIS_SCHEMA } },
     })
 
-    const text = message.content[0].type === 'text' ? message.content[0].text : ''
-    const cleaned = text
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```\s*$/i, '')
-      .trim()
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      console.error('Failed to parse Claude patterns response:', text)
-      return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
+    // The schema guarantees valid JSON only for a reply that finished. A cut-off
+    // or refused reply is still partial text, so name the cause instead of
+    // letting JSON.parse surface it as a generic parse error.
+    if (message.stop_reason === 'max_tokens' || message.stop_reason === 'refusal') {
+      console.error('Pattern analysis stopped early:', message.stop_reason, message.usage)
+      return NextResponse.json({ error: `AI response incomplete (${message.stop_reason})` }, { status: 500 })
     }
 
-    const analysis = JSON.parse(jsonMatch[0])
+    const text = message.content[0].type === 'text' ? message.content[0].text : ''
+    let analysis
+    try {
+      analysis = JSON.parse(text)
+    } catch {
+      console.error('Failed to parse Claude patterns response:', text)
+      return NextResponse.json({ error: 'Invalid JSON in AI response' }, { status: 500 })
+    }
     return NextResponse.json({ analysis, tradeCount: trades.length })
   } catch (err) {
     console.error('Pattern analysis error:', err)
