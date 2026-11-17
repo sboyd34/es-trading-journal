@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 
 interface Pattern {
   title: string
-  type: 'behavioral' | 'statistical' | 'timing' | 'risk'
+  type: 'behavioral' | 'statistical' | 'timing' | 'risk' | 'system-compliance'
   severity: 'positive' | 'warning' | 'critical'
   finding: string
   recommendation: string
@@ -26,6 +26,7 @@ const typeIcon = {
   statistical: TrendingUp,
   timing: Clock,
   risk: Shield,
+  'system-compliance': CheckCircle,
 }
 
 const typeLabel = {
@@ -33,6 +34,7 @@ const typeLabel = {
   statistical: 'Statistical',
   timing: 'Timing',
   risk: 'Risk',
+  'system-compliance': 'System Compliance',
 }
 
 const severityStyle = {
