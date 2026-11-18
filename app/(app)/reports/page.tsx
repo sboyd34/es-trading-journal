@@ -1301,7 +1301,7 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
 
       {/* Monte Carlo Simulator */}
       {tab === 'montecarlo' && (
-        <MonteCarloTab trades={dateFilteredTrades} riskRules={riskRules} />
+        <MonteCarloTab trades={dateFilteredTrades} />
       )}
 
       {/* ── Setup Performance Matrix ──────────────────────────────────────── */}
