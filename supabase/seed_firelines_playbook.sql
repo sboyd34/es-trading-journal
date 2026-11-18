@@ -8,7 +8,7 @@ VALUES (
   '1. 1H bias aligned — above 21 EMA for longs (B-FL levels), below for shorts (S-FL levels)
 2. Price reaches a FireLines level (B-FL1, B-FL2, B-FL3 or S-FL1, S-FL2, S-FL3)
 3. Confirmation candle at the level: rejection wick, engulfing, or inside bar breakout on 5m
-4. Inside approved time window — Opening Drive or Closing Drive preferred
+4. Session context — Opening Drive or Closing Drive preferred (any time of day is allowed)
 5. Emotionally flat — no FOMO, no revenge, no chasing',
   'Target: Next FireLines level in trade direction (B-FL1 → B-FL2 → B-FL3)
 Stop: 2-3 points beyond the entry FireLines level

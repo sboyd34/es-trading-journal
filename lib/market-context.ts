@@ -284,7 +284,7 @@ export function formatMarketContextSection(ctx: MarketContext | null): string {
     lines.push(
       '  Use this regime to set risk_level: Elevated → expect follow-through and ' +
         'wider stops, fade less; Compressed → expect chop and failed breaks, ' +
-        'favor mean-reversion at the edges and respect the dead zone.',
+        'favor mean-reversion at the edges and expect a choppy midday.',
     )
   }
 

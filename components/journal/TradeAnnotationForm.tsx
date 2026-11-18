@@ -608,7 +608,7 @@ export default function TradeAnnotationForm({
             <div className="mt-2 rounded-lg border border-gray-700/60 bg-gray-900/50 divide-y divide-gray-700/40 text-xs">
               <div className="p-3">
                 <p className="font-semibold text-emerald-400 mb-1">A — All criteria met</p>
-                <p className="text-gray-400 leading-relaxed">1H bias clear and aligned · Correct setup from priority list · Approved location with room · Break→Retest→Confirm→Enter followed · Inside approved time window · Emotionally flat</p>
+                <p className="text-gray-400 leading-relaxed">1H bias clear and aligned · Correct setup from priority list · Approved location with room · Break→Retest→Confirm→Enter followed · Emotionally flat</p>
               </div>
               <div className="p-3">
                 <p className="font-semibold text-yellow-400 mb-1">B — One minor deviation</p>
@@ -616,7 +616,7 @@ export default function TradeAnnotationForm({
               </div>
               <div className="p-3">
                 <p className="font-semibold text-red-400 mb-1">C — Rule violation</p>
-                <p className="text-gray-400 leading-relaxed">POC/mid-value/chop entry · Wrong time window · Wrong direction vs bias · Chased extended candle · Entered on bubble/fire alone · FOMO or revenge state · Blind-touch trade</p>
+                <p className="text-gray-400 leading-relaxed">POC/mid-value/chop entry · Wrong direction vs bias · Chased extended candle · Entered on bubble/fire alone · FOMO or revenge state · Blind-touch trade</p>
               </div>
             </div>
           )}

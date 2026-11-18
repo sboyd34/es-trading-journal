@@ -6,6 +6,7 @@ import { formatEdgeStatsSection, type EdgeStat } from '@/lib/edge-stats'
 import { fetchMarketContext, formatMarketContextSection } from '@/lib/market-context'
 import { formatPriorSessionSection, type PriorSession } from '@/lib/prior-session'
 import { getTodayChicagoDateString } from '@/lib/eod-gate'
+import { SESSION_TIME_POLICY } from '@/lib/trading-system'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -31,7 +32,7 @@ Core Model: 1H Bias → 15m Setup → 5m Trigger
 - Bear bias (1H close below 21 EMA, falling) → shorts only
 - Neutral (flat/crossing EMA) → retests only or no trade
 
-Approved Time Windows (CT) — ORB replays at each session open: Tokyo 19:00–19:15 build → 19:15–20:00 ORB; Shanghai 20:30–20:45 build → 20:45–21:30 ORB; London 02:00–02:15 build → 02:15–03:00 ORB; NY 08:30–08:45 build → 08:45–09:30 ORB primary → 09:30–10:30 continuation → 10:30–11:00 A+ only → 11:00–12:30 dead zone → 12:30–14:00 secondary (directional morning + no macro + VWAP aligned). All other extended-hours time is tradeable but secondary (thinner liquidity); the session ORBs and NY RTH are prime.
+${SESSION_TIME_POLICY}
 
 Setup Priority: (1) ORB Break (2) TTM Squeeze pullback (3) AVWAP Bounce (4) FVG Bounce (5) Divergence/Trendline Break — alert only.
 
@@ -46,9 +47,8 @@ When generating the pre-market brief:
 - Identify the 1H bias direction explicitly (Bull/Bear/Neutral) and why
 - Name which of the 6 setups to watch for given today's conditions
 - Build if/then scenarios using the Break→Retest→Confirm→Enter sequence
-- Flag any conditions that would put the trader in the dead zone or secondary window
-- If scheduled macro events are listed, fold them into the plan: elevate risk_level around HIGH-impact prints, and in what_not_to_do warn against fading the first impulse off an 07:30 CT release — let the NY ORB build finish before committing. If the list says the 12:30–14:00 secondary window is CLOSED (a macro event hits 12:00–14:30 CT, e.g. FOMC), say so explicitly in if_then_plan and what_not_to_do.
-- If watchlist earnings are listed, fold them in: a Mag 7 or large-cap BMO print can whip the cash open, so elevate risk_level and warn in what_not_to_do against committing to the NY ORB before the earnings reaction settles. An AMC print is afternoon and overnight risk — flag it for the 12:30–14:00 secondary window and caution against carrying size into the close.
+- If scheduled macro events are listed, fold them into the plan: elevate risk_level around HIGH-impact prints, and in what_not_to_do warn against fading the first impulse off an 07:30 CT release — let the NY ORB build finish before committing. If the list flags an afternoon macro event (12:00–14:30 CT, e.g. FOMC), say so explicitly in if_then_plan and what_not_to_do.
+- If watchlist earnings are listed, fold them in: a Mag 7 or large-cap BMO print can whip the cash open, so elevate risk_level and warn in what_not_to_do against committing to the NY ORB before the earnings reaction settles. An AMC print is afternoon and overnight risk — flag it and caution against carrying size into the close.
 - If a personal edge table is provided, weave the rows matching today's bias into market_condition, day_type_expectation, and what_not_to_do. Treat a weak personal record on an approved setup as "demand A+ confluence / size down," never as a ban — the system's setup list still governs. Soften any row tagged [thin sample] to directional language; never quote a hard win rate off a thin sample.
 - If a "Market context (SPY proxy)" block is provided, treat its numbers as FACT and build key_levels and if_then_plan around them: cite the SPY prior-day high/low (PDH/PDL), prior close, and premarket high/low as the actual approved locations, and read the open gap for directional context. These are SPY-proxy levels covering only NY premarket + extended hours — do NOT fabricate Tokyo/Shanghai/London ORB levels or overnight extremes that are not in the block. Fold the volatility regime into risk_level: Elevated → lean toward High and warn that stops must be wider and first impulses tend to follow through (fade less); Compressed → expect failed breaks and chop, favor mean-reversion at the band edges, and treat the dead zone as untradeable.
 - If a "Last trading session" block is provided, fold it into what_not_to_do per its guidance: after a RED session, the FIRST item of what_not_to_do must be an explicit revenge-trade guardrail; after a GREEN session, warn against overconfidence/size-up; after a scratch, warn against boredom trades. Never let a prior win read as license to loosen the rules.
@@ -63,7 +63,7 @@ Return ONLY valid JSON with these exact keys:
   "day_type_expectation": "Expected day type — reference which setups are most likely valid today",
   "key_levels": "Critical price levels for ORH/ORL, VWAP/AVWAP, VAH/VAL, PDH/PDL, overnight extremes",
   "if_then_plan": "2-3 specific if/then scenarios using Break→Retest→Confirm→Enter format with exact levels",
-  "what_not_to_do": "Specific banned behaviors for today — reference POC/mid-value/chop locations and time window rules",
+  "what_not_to_do": "Specific banned behaviors for today — reference POC/mid-value/chop locations and banned entry behaviors",
   "risk_level": "Low | Normal | High — with specific reason referencing today's structure"
 }
 
@@ -121,7 +121,7 @@ function formatMacroSection(today: string): string {
     .map((e) => `- ${e.ctTime} CT [${e.impact}] ${e.name}`)
     .join('\n')
   const gate = hasSecondaryWindowConflict(today)
-    ? '\nA macro event falls in 12:00–14:30 CT — the 12:30–14:00 NY secondary window gate is CLOSED today.'
+    ? '\nA macro event falls in 12:00–14:30 CT — afternoon news risk today.'
     : ''
   return `\n\nScheduled US macro events today (America/Chicago):\n${lines}${gate}`
 }

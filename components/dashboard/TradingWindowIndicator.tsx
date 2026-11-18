@@ -10,9 +10,10 @@ interface Window {
   color: 'green' | 'amber' | 'red' | 'gray'
 }
 
-// ORB windows are green (prime), builds + extended hours are amber (caution),
-// the NY lunch dead zone is red. Derived from the shared classifier so the live
-// banner can never drift from the journal/heatmap rules.
+// ORB windows are green (prime liquidity), everything else is amber (thinner /
+// choppier context). No time of day is red — time is never a violation; only the
+// macro-event news warning below uses red. Derived from the shared classifier so
+// the live banner can never drift from the journal/heatmap labels.
 const WINDOW_COLOR: Record<WindowStatus, Window['color']> = {
   tokyo_orb: 'green',
   shanghai_orb: 'green',
@@ -26,7 +27,7 @@ const WINDOW_COLOR: Record<WindowStatus, Window['color']> = {
   shanghai_build: 'amber',
   london_build: 'amber',
   building: 'amber',
-  dead_zone: 'red',
+  dead_zone: 'amber',
   unknown: 'gray',
 }
 
@@ -55,7 +56,7 @@ function getCTTimeString(): string {
 function getWindow(totalMin: number, macroEventDetected = false): Window {
   const status = classifyWindow(totalMin)
   if (status === 'secondary' && macroEventDetected) {
-    return { label: 'Macro event in NY secondary window — gate closed.', color: 'red' }
+    return { label: 'Macro event this afternoon — news risk.', color: 'red' }
   }
   return { label: WINDOW_LABEL[status], color: WINDOW_COLOR[status] }
 }

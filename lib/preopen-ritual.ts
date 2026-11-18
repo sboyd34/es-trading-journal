@@ -22,7 +22,7 @@ export const THE_15_RULES: readonly string[] = [
   'Position size is locked at session start. No sizing up mid-session, even on a heater.',
   'Two-strike rule on setups: if the same setup fails twice in a row, skip it for the day.',
   'No trading FOMC / CPI / NFP windows on these account sizes. Drawdowns are too tight.',
-  'No trading the midday chop (11:00–14:00 ET). Open and last hour only.',
+  'Midday (11:00–14:00 ET) is often chop — trade it only on a clean A+ setup, never out of boredom.',
   'ES is OFF-LIMITS until I have a funded account with $750+ buffer above the locked drawdown.',
   'On the PA, the first $100 (25K) / $250 (50K) is sacred. After that, ONE optional trade. Then done.',
   'If I am behind pace on the 30-day eval, the rule is RESET if needed — not size up. A failed reset is cheaper than a blown PA.',

@@ -95,7 +95,7 @@ export default function FiveWordGateModal({ trade, trades = [], onComplete, onCa
         london_orb: 'London 02:15–03:00', primary: 'NY 08:45–09:30',
         continuation: 'NY 09:30–10:30', late: 'NY 10:30–11:00', secondary: 'NY 12:30–14:00',
         eth: 'extended hours', tokyo_build: 'Tokyo pre-ORB', shanghai_build: 'Shanghai pre-ORB',
-        london_build: 'London pre-ORB', building: 'NY pre-ORB', dead_zone: 'dead zone',
+        london_build: 'London pre-ORB', building: 'NY pre-ORB', dead_zone: 'NY lunch',
       }
       return {
         wins, total: tier1.length, tier: 'full',

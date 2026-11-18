@@ -36,9 +36,10 @@ export type WindowStatus =
   | 'unknown'
 
 // Classify a CT minute count (minutes since midnight, America/Chicago) into a named
-// trading window. ORB replays at each session open — Tokyo, Shanghai, London, NY —
-// each a 15-min opening-range build followed by a 45-min ORB window. All time between
-// sessions is extended hours: tradeable, but secondary to the session opens.
+// session window. ORB replays at each session open — Tokyo, Shanghai, London, NY —
+// each a 15-min opening-range build followed by a 45-min ORB window. These are
+// descriptive context only: every time of day is tradeable and none is a violation
+// (see SESSION_TIME_POLICY in lib/trading-system.ts).
 export function classifyWindow(mins: number): WindowStatus {
   // London open (02:00–03:00 CT)
   if (mins >= 120 && mins < 135) return 'london_build'     // 02:00–02:15
@@ -62,41 +63,20 @@ export function classifyWindow(mins: number): WindowStatus {
 
 // Human-readable label per window — used in AI prompts, tooltips, the live indicator.
 export const WINDOW_LABEL: Record<WindowStatus, string> = {
-  building: 'NY OR build (no trades)',
+  building: 'NY OR build',
   primary: 'NY ORB',
   continuation: 'NY continuation',
-  late: 'NY A+ only',
-  dead_zone: 'NY lunch dead zone (no trades)',
+  late: 'NY late morning',
+  dead_zone: 'NY lunch (often choppy)',
   secondary: 'NY secondary',
-  tokyo_build: 'Tokyo OR build (no trades)',
+  tokyo_build: 'Tokyo OR build',
   tokyo_orb: 'Tokyo ORB',
-  shanghai_build: 'Shanghai OR build (no trades)',
+  shanghai_build: 'Shanghai OR build',
   shanghai_orb: 'Shanghai ORB',
-  london_build: 'London OR build (no trades)',
+  london_build: 'London OR build',
   london_orb: 'London ORB',
   eth: 'Extended hours',
   unknown: 'unknown',
-}
-
-// Build windows + the NY lunch dead zone: the rule is "build the range / stand down."
-const NO_TRADE_WINDOWS: WindowStatus[] = [
-  'building', 'tokyo_build', 'shanghai_build', 'london_build', 'dead_zone',
-]
-
-export function isNoTradeWindow(status: WindowStatus): boolean {
-  return NO_TRADE_WINDOWS.includes(status)
-}
-
-// Whether a window is "approved" for an entry. Every session ORB, the NY
-// continuation/late/secondary windows, and general extended hours are tradeable;
-// the build windows and the NY lunch dead zone are not.
-const APPROVED_WINDOWS: WindowStatus[] = [
-  'primary', 'continuation', 'late', 'secondary',
-  'tokyo_orb', 'shanghai_orb', 'london_orb', 'eth',
-]
-
-export function isApprovedWindow(status: WindowStatus): boolean {
-  return APPROVED_WINDOWS.includes(status)
 }
 
 // Compute all rule flags for a single trade given the full trade list.

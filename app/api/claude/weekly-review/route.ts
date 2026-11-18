@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { Trade, DailySession } from '@/types'
+import { SESSION_TIME_POLICY } from '@/lib/trading-system'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -236,7 +237,7 @@ TRADING SYSTEM RULES:
 Core Model: 1H Bias → 15m Setup → 5m Trigger
 - Bull bias → longs only; Bear bias → shorts only; Neutral → retests only or no trade
 
-Approved Time Windows (CT): 08:45–09:30 ORB primary; 09:30–10:30 continuation; 10:30–11:00 A+ only; 12:30–14:00 secondary (3 gates required); ALL other times = no trade.
+${SESSION_TIME_POLICY}
 
 Setup Priority: (1) ORB Break (2) TTM Squeeze (3) AVWAP Bounce (4) FVG Bounce (5) Divergence/Trendline Break.
 

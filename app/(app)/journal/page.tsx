@@ -6,7 +6,7 @@ import { Trade } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { parseTradovateCSV } from '@/lib/tradovate-parser'
 import { formatCurrency, getMoodEmoji, getGradeColor, getPnLColor, cn } from '@/lib/utils'
-import { computeTradeFlags, classifyWindow, ctTimeLabel, isApprovedWindow } from '@/lib/trade-flags'
+import { computeTradeFlags, ctTimeLabel } from '@/lib/trade-flags'
 import { Modal } from '@/components/ui/Modal'
 import TradeAnnotationForm from '@/components/journal/TradeAnnotationForm'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
@@ -589,13 +589,6 @@ export default function JournalPage() {
                       const hasFlags = flags.length > 0
 
                       // Classify the entry window for time-cell coloring
-                      const ctLabel = ctTimeLabel(trade.entry_time)
-                      const ctMinsVal = ctLabel
-                        ? (() => { const [h, m] = ctLabel.split(':').map(Number); return h * 60 + m })()
-                        : null
-                      const windowStatus = ctMinsVal !== null ? classifyWindow(ctMinsVal) : 'unknown'
-                      const timeIsOk = isApprovedWindow(windowStatus)
-
                       return (
                       <tr
                         key={trade.id}
@@ -635,12 +628,7 @@ export default function JournalPage() {
                           <span className="text-xs font-semibold text-blue-400/80">{trade.instrument || 'ES'}</span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-xs">
-                          <span
-                            className={cn(
-                              timeIsOk ? 'text-gray-400' : 'text-red-400 font-semibold',
-                            )}
-                            title={!timeIsOk ? `Outside approved window — ${windowStatus.replace('_', ' ')}` : undefined}
-                          >
+                          <span className="text-gray-400">
                             {format(parseISO(trade.entry_time), 'HH:mm')}
                           </span>
                         </td>

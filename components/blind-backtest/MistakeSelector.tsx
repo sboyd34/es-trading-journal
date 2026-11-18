@@ -3,7 +3,6 @@
 import { cn } from '@/lib/utils'
 
 export const MISTAKE_TYPES = [
-  'Outside time window',
   'Broke checklist (claimed pillars I didn\'t actually verify)',
   'No setup confluence',
   'Chased entry (price ran before I clicked)',

@@ -214,7 +214,7 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
             <p className="text-xs text-red-300 font-medium leading-relaxed">
-              Macro event detected in secondary window — gate closed.
+              Macro event detected this afternoon — news risk.
             </p>
           </div>
           {macroTriggers.length > 0 && (

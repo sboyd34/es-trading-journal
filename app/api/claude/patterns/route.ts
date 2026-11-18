@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { TRADING_SYSTEM_PROMPT } from '@/lib/trading-system'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -26,7 +27,16 @@ const ANALYSIS_SCHEMA = obj({
     type: 'array',
     items: obj({
       title: str,
-      type: { type: 'string', enum: ['behavioral', 'statistical', 'timing', 'risk', 'system-compliance'] },
+      // 'timing' was removed deliberately. Structured output CONSTRAINS
+      // decoding, so offering a category named "timing" alongside
+      // severity:"critical" made a critical time-of-day finding a perfectly
+      // well-formed response — while SESSION_TIME_POLICY in the prose asked for
+      // the opposite. The schema permitted exactly what the prose forbade, and
+      // a decoding constraint beats an instruction every time. With no slot to
+      // put it in, a time-of-day observation has to land in 'statistical',
+      // which is what the policy calls it: descriptive data, not a violation.
+      // Do not re-add it without also reading SESSION_TIME_POLICY.
+      type: { type: 'string', enum: ['behavioral', 'statistical', 'risk', 'system-compliance'] },
       severity: { type: 'string', enum: ['positive', 'warning', 'critical'] },
       finding: str,
       recommendation: str,
@@ -77,19 +87,13 @@ export async function POST() {
       max_tokens: 16000,
       system: `You are an expert ES futures trading coach and behavioral analyst. This trader uses a strict rules-based system. Evaluate all patterns against these rules — be specific with numbers and rule references, never generic.
 
-TRADING SYSTEM RULES:
-Core Model: 1H Bias → 15m Setup → 5m Trigger (Bull=longs only, Bear=shorts only, Neutral=retests only)
-Time Windows (CT): 08:45–09:30 ORB primary; 09:30–10:30 continuation; 10:30–11:00 A+ only; 12:30–14:00 secondary (3 gates); all other times = no trade.
-Setups (priority order): (1) ORB Break (2) TTM Squeeze (3) AVWAP Bounce (4) FVG Bounce (5) Divergence/Trendline Break.
-Entry Rule: Break→Retest→Confirm→Enter. Never anticipate/chase/blind-touch/enter on fire alone.
-Approved Locations: ORH/ORL, VWAP/AVWAP, VAH/VAL, PDH/PDL, overnight high/low, prior swing extremes, fresh supply/demand.
-BANNED Locations: POC, mid-value, overlapping candles, chop.
-Hard Rule: Bias.Setup.Trigger.Location.Risk — all five before every trade.
-Grade: A=all criteria met; B=one minor deviation; C=any rule violation.
-Risk: Evaluation hard stop -$250/soft -$150; PA hard -$150/soft -$120.
+HARD OUTPUT CONSTRAINT — this overrides every rule below.
+Entry TIME OF DAY is never a finding, never a violation, never a blind spot, never a weakness, and never affects a grade. This trader trades whenever their schedule allows; the large majority of entries fall outside 08:30-15:00 CT and that is BY DESIGN, not a deviation. Do NOT describe any entry time as prohibited, restricted, banned, off-hours, outside the window, too late, or non-compliant. Never place a time-of-day observation in blind_spots or priority_focus. Time-of-day statistics are descriptive only and belong in patterns with type "statistical".
+
+${TRADING_SYSTEM_PROMPT}
 
 When analyzing patterns, specifically check:
-- What percentage of trades are during approved vs banned time windows?
+- How does performance vary by session? (Descriptive statistics only — type "statistical", never a blind spot or priority focus. See the hard output constraint above.)
 - Which setups have the best/worst win rates? Are lower-priority setups being over-traded?
 - Are there entries at banned locations (POC, mid-value, chop)? Name them.
 - Is the Break→Retest→Confirm→Enter sequence being followed? What % skip steps?
@@ -103,7 +107,7 @@ Return ONLY valid JSON with this structure:
   "patterns": [
     {
       "title": "Pattern name",
-      "type": "behavioral | statistical | timing | risk | system-compliance",
+      "type": "behavioral | statistical | risk | system-compliance",
       "severity": "positive | warning | critical",
       "finding": "Specific finding with exact numbers and rule reference",
       "recommendation": "Concrete rule-based action to take"

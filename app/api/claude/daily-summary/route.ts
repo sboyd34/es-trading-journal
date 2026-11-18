@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { Trade } from '@/types'
+import { SESSION_TIME_POLICY } from '@/lib/trading-system'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -54,7 +55,7 @@ TRADING SYSTEM RULES:
 Core Model: 1H Bias → 15m Setup → 5m Trigger
 - Bull bias → longs only; Bear bias → shorts only; Neutral → retests only or no trade
 
-Approved Time Windows (CT): 08:45–09:30 ORB primary; 09:30–10:30 continuation; 10:30–11:00 A+ only; 12:30–14:00 secondary (3 gates required); ALL other times = no trade.
+${SESSION_TIME_POLICY}
 
 Setup Priority: (1) ORB Break (2) TTM Squeeze (3) AVWAP Bounce (4) FVG Bounce (5) Divergence/Trendline Break (alert only).
 
@@ -66,23 +67,22 @@ BANNED Locations: POC, mid-value, overlapping candles, obvious chop.
 Hard Operating Rule: Bias. Setup. Trigger. Location. Risk. — all five must be stated before entering. If any is missing = rule violation = C grade minimum.
 
 Grade Rubric:
-A: All criteria met — bias clear, correct setup, approved location, Break→Retest→Confirm→Enter, approved time window, emotionally flat
+A: All criteria met — bias clear, correct setup, approved location, Break→Retest→Confirm→Enter, emotionally flat
 B: One minor deviation (slightly early, Tier 2 location without extra confirm, small size)
-C: ANY of: POC/chop/mid-value entry, wrong time window, wrong direction vs bias, chased candle, entered on fire alone, FOMO/revenge state, blind-touch
+C: ANY of: POC/chop/mid-value entry, wrong direction vs bias, chased candle, entered on fire alone, FOMO/revenge state, blind-touch
 
 For each trade, explicitly state:
-1. Was the time window approved?
-2. Does the entry location match approved locations (call out if it's a banned location)?
-3. Was the entry sequence (Break→Retest→Confirm→Enter) followed?
-4. Does the direction match the 1H bias?
-5. Which of the 6 setups was this? Is the grade appropriate per the rubric?
+1. Does the entry location match approved locations (call out if it's a banned location)?
+2. Was the entry sequence (Break→Retest→Confirm→Enter) followed?
+3. Does the direction match the 1H bias?
+4. Which of the 6 setups was this? Is the grade appropriate per the rubric?
 
 Return ONLY valid JSON with these exact keys:
 {
-  "what_happened": "Factual summary — time windows used, P&L outcome, day structure",
+  "what_happened": "Factual summary — sessions traded, P&L outcome, day structure",
   "trades_review": "Trade-by-trade system evaluation — call out each rule followed or violated with specific references",
   "emotional_state": "Assessment based on mood tags, trade sequence, and any revenge/FOMO patterns",
-  "mistakes": "Specific rule violations — name the exact rule broken (time window, location, entry sequence, bias alignment)",
+  "mistakes": "Specific rule violations — name the exact rule broken (location, entry sequence, bias alignment)",
   "wins": "Specific rules followed correctly — genuine positives with exact rule references",
   "lesson": "The single most important system rule to focus on",
   "tomorrow_focus": "1-2 specific rule-based behaviors to enforce tomorrow"

@@ -49,7 +49,7 @@ const STEPS: PlaybookStep[] = [
     icon: <ListChecks className="h-4 w-4" />,
     title: 'Run the checklist',
     detail:
-      'A+ only satisfies "approved location" + direction. You still owe the rest: does it map to one of the 6 setups, is 1H bias aligned (the chip is single-timeframe), and are you inside a valid time window?',
+      'A+ only satisfies "approved location" + direction. You still owe the rest: does it map to one of the 6 setups, and is 1H bias aligned (the chip is single-timeframe)?',
   },
   {
     n: 3,
@@ -106,7 +106,6 @@ const ALIGNMENT: AlignmentRow[] = [
 const GUARDRAILS: string[] = [
   'Don\'t chase a stale A+. If price already ran past the level, the edge is gone — the chip dies when price leaves, but trust your eyes too.',
   'One look per level. Missed the entry? Don\'t revenge-chase the same level (pre-open check #4).',
-  'No A+ outside your windows. A perfect-looking signal at lunch lull is still a lunch-lull trade.',
   'Counter-1H-bias A+ = smaller or skip. The single-timeframe trap.',
 ]
 

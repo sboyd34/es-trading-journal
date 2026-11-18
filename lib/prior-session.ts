@@ -90,8 +90,8 @@ export function formatPriorSessionSection(
   if (ps.outcome === 'red') {
     guidance =
       ' This was a RED session — open what_not_to_do with an explicit ' +
-      'revenge-trade guardrail: no size-up to "win it back," no trading outside ' +
-      'an approved window to force a setup, and honor "one look per level." ' +
+      'revenge-trade guardrail: no size-up to "win it back," no forcing a ' +
+      'setup that isn\'t there, and honor "one look per level." ' +
       'Demand a clean Bias-Setup-Trigger-Location-Risk before the first entry.'
   } else if (ps.outcome === 'green') {
     guidance =

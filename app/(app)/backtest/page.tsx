@@ -27,9 +27,9 @@ function getWindowLabel(timeStr: string | null): string {
   if (total < 570) return '08:45–09:30 ORB'
   if (total < 630) return '09:30–10:30'
   if (total < 660) return '10:30–11:00'
-  if (total < 750) return '11:00–12:30 Dead Zone'
+  if (total < 750) return '11:00–12:30 Lunch'
   if (total < 840) return '12:30–14:00 Secondary'
-  return '14:00+ Closed'
+  return '14:00+ Late / ETH'
 }
 
 function computeStats(trades: BacktestTrade[]) {

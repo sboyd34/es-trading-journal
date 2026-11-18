@@ -32,14 +32,14 @@ const WINDOW_LABELS: Record<string, string> = {
   london_orb: 'London ORB (02:15–03:00)',
   primary: 'NY ORB (08:45–09:30)',
   continuation: 'NY Continuation (09:30–10:30)',
-  late: 'NY A+ Only (10:30–11:00)',
+  late: 'NY Late Morning (10:30–11:00)',
   secondary: 'NY Secondary (12:30–14:00)',
   eth: 'Extended Hours',
   tokyo_build: 'Tokyo Build (19:00–19:15)',
   shanghai_build: 'Shanghai Build (20:30–20:45)',
   london_build: 'London Build (02:00–02:15)',
   building: 'NY Build (08:30–08:45)',
-  dead_zone: 'NY Lunch Dead Zone (11:00–12:30)',
+  dead_zone: 'NY Lunch (11:00–12:30)',
   unknown: 'Unknown',
 }
 
@@ -49,12 +49,12 @@ const WINDOW_ORDER: string[] = [
   'shanghai_orb',
   'london_orb',
   'primary',
-  // other tradeable windows
+  // rest of NY + extended hours
   'continuation',
   'late',
   'secondary',
   'eth',
-  // no-trade windows
+  // OR builds + NY lunch
   'tokyo_build',
   'shanghai_build',
   'london_build',
