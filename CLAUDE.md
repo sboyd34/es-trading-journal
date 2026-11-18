@@ -111,6 +111,14 @@ It has wiped working configs before. Sensitive vars return empty and silently ov
 - ~150-word coach review + what-went-right/wrong/lesson
 - Cached on `trades.ai_narrative` column
 
+**Claude routes that return JSON** (`daily-summary`, `weekly-review`, `patterns` are the reference implementations):
+- **Structured outputs, not prompt-only JSON.** Pass `output_config: { format: { type: 'json_schema', schema } }` with a schema mirroring the consuming TS type — every property `required`, `additionalProperties: false`, optional fields as nullable. Prompt-only JSON broke ~1 in 6 weekly reviews even when the reply finished. Then plain `JSON.parse` — no fence-stripping or `\{[\s\S]*\}` regex.
+- **Generous `max_tokens` (16000).** Output grows with trade count, so a cap that fits today silently fails later — all three routes truncated this way (patterns at 2048, weekly at 2800, daily at 1500 on a 10-trade day). The cap is a ceiling, not a cost.
+- **Check `stop_reason` before parsing.** The schema only guarantees valid JSON for a reply that *finished*; on `max_tokens` or `refusal` return `AI response incomplete (<reason>)` rather than letting `JSON.parse` surface a generic 500.
+- **Mind `maxDuration`.** Long replies take 60–90s; an explicit `maxDuration = 60` kills the function first (weekly review did, so the Friday cron never saved a review). Omit it (default 300s) or set 300.
+- **Use `messages.create`, not `messages.parse`.** `.parse()` throws on a truncated reply before you can read `stop_reason`.
+- **Time-of-day rules come from `SESSION_TIME_POLICY`** in `lib/trading-system.ts` — interpolate it, never restate window rules inline. Inline copies drifted and kept penalizing out-of-window trades after the policy changed. Time of day is context only, never a violation.
+
 ## Migration workflow
 
 SQL files live in `supabase/`. No automated tracker yet — runs are manual:
