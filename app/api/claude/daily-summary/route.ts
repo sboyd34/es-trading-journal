@@ -10,6 +10,18 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
+// Structured-output schema: the API constrains decoding to this shape, so the
+// reply is always parseable JSON. Mirrors EndOfDaySummary in types/index.ts.
+const SUMMARY_KEYS = [
+  'what_happened', 'trades_review', 'emotional_state', 'mistakes', 'wins', 'lesson', 'tomorrow_focus',
+] as const
+const SUMMARY_SCHEMA = {
+  type: 'object',
+  properties: Object.fromEntries(SUMMARY_KEYS.map((k) => [k, { type: 'string' }])),
+  required: [...SUMMARY_KEYS],
+  additionalProperties: false,
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -100,7 +112,7 @@ Please generate my end-of-day summary.`
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [
         {
@@ -108,20 +120,22 @@ Please generate my end-of-day summary.`
           content: userMessage,
         },
       ],
+      output_config: { format: { type: 'json_schema', schema: SUMMARY_SCHEMA } },
     })
+
+    // The schema guarantees valid JSON only for a reply that finished. A cut-off
+    // or refused reply is still partial text, so name the cause instead of
+    // letting JSON.parse surface it as a generic parse error.
+    if (message.stop_reason === 'max_tokens' || message.stop_reason === 'refusal') {
+      console.error('Daily summary stopped early:', message.stop_reason, message.usage)
+      return NextResponse.json({ error: `AI response incomplete (${message.stop_reason})` }, { status: 500 })
+    }
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
 
     let summary
     try {
-      const cleaned = responseText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '')
-        .trim()
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error('No JSON found in response')
-      summary = JSON.parse(jsonMatch[0])
+      summary = JSON.parse(responseText)
     } catch {
       console.error('Failed to parse Claude daily summary response:', responseText)
       return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
