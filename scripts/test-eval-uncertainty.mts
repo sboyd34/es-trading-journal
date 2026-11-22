@@ -151,6 +151,34 @@ check(
   'adequate',
 )
 
+// Missing excursion data caps 'adequate' at 'directional'. Before this, a tight
+// CI over enough days read 'adequate' with ZERO MFE coverage — fail-open, since
+// without MFE the trailing ratchet never fires and fail risk is understated.
+check(
+  'low excursion coverage caps adequate at directional',
+  assessAdequacy({
+    ...healthy,
+    distinctDays: 20,
+    ciWidth: 5,
+    excursionsPresent: 0,
+  }).verdict,
+  'directional',
+)
+
+// Downgrade only, never an upgrade: a short bootstrap stays 'insufficient' even
+// with coverage also failing.
+check(
+  'low coverage does not upgrade insufficient',
+  assessAdequacy({
+    ...healthy,
+    distinctDays: 20,
+    ciWidth: 5,
+    excursionsPresent: 0,
+    bootstrapReps: 250,
+  }).verdict,
+  'insufficient',
+)
+
 // The cap must not upgrade: an 'insufficient' verdict from a short bootstrap
 // combined with few distinct days must stay 'insufficient', not become
 // 'directional'.

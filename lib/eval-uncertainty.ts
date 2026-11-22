@@ -159,6 +159,20 @@ export function assessAdequacy(i: AdequacyInput): Adequacy {
     verdict = 'directional'
   }
 
+  // Missing excursion data is a HOLE IN THE MODEL, not a note about the sample.
+  // Without MFE the trailing-threshold ratchet never fires, so the simulated
+  // drawdown — and therefore fail risk — is understated by an unknown amount.
+  // A blocker alone was fail-open: a tight CI over 20+ days with ZERO MFE
+  // coverage read 'adequate' while the sim was blind to the mechanic that most
+  // often ends an eval. Cap at 'directional' so the headline cannot assert
+  // precision the model does not have.
+  //
+  // Downgrade only, like the distinctDays branch above — it must never upgrade
+  // an 'insufficient' verdict the bootstrap-integrity branches already set.
+  if (excursionCoverage < MIN_EXCURSION_COVERAGE && verdict === 'adequate') {
+    verdict = 'directional'
+  }
+
   if (excursionCoverage < MIN_EXCURSION_COVERAGE) {
     blockers.push(
       `Only ${excursionsPresent} of ${tradeCount} trades have a recorded MFE (${Math.round(excursionCoverage * 100)}%). ` +
