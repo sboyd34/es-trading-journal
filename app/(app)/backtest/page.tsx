@@ -365,6 +365,13 @@ export default function BacktestPage() {
       .sort((a, b) => a.winRateDecay - b.winRateDecay)
   }, [comparison])
 
+  // Silent-when-clean: Analytics and Compare & AI only appear once the selected
+  // date has backtest trades, and each comparison panel only when it has
+  // backtest data of its own. With none, an open sub-tab falls back to Session.
+  const hasBacktestTrades = trades.length > 0
+  const hasBacktestComparison = comparison.some((r) => r.backtest.count > 0)
+  const activeTab: PageTab = hasBacktestTrades ? tab : 'session'
+
   async function handleAiSummary() {
     if (comparison.length === 0) {
       toast.error('No comparison data available yet')
@@ -448,19 +455,21 @@ export default function BacktestPage() {
       {topTab === 'manual' && (
       <div className="space-y-6">
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-800/50 border border-gray-700/50 rounded-xl p-1 w-fit">
-        {(['session', 'analytics', 'comparison'] as PageTab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={cn('px-5 py-2 rounded-lg text-sm font-medium transition capitalize',
-              tab === t ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
-            {t === 'comparison' ? 'Compare & AI' : t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </div>
+      {/* Tabs — hidden entirely until there is more than Session to show */}
+      {hasBacktestTrades && (
+        <div className="flex gap-1 bg-gray-800/50 border border-gray-700/50 rounded-xl p-1 w-fit">
+          {(['session', 'analytics', 'comparison'] as PageTab[]).map((t) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={cn('px-5 py-2 rounded-lg text-sm font-medium transition capitalize',
+                activeTab === t ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
+              {t === 'comparison' ? 'Compare & AI' : t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* SESSION TAB */}
-      {tab === 'session' && (
+      {activeTab === 'session' && (
         <div className="space-y-5">
           {/* Session context */}
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
@@ -585,7 +594,7 @@ export default function BacktestPage() {
       )}
 
       {/* ANALYTICS TAB */}
-      {tab === 'analytics' && (
+      {activeTab === 'analytics' && (
         <div className="space-y-5">
           {trades.length === 0 ? (
             <div className="text-center py-16 text-gray-500">Log some backtest trades first</div>
@@ -682,19 +691,15 @@ export default function BacktestPage() {
       )}
 
       {/* COMPARISON & AI TAB */}
-      {tab === 'comparison' && (
+      {activeTab === 'comparison' && (
         <div className="space-y-5">
-          {/* Edge Decay Scorecard */}
+          {/* Edge Decay Scorecard — only setups with both backtest and live trades */}
+          {edgeDecay.length > 0 && (
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-700/50">
               <h2 className="text-sm font-semibold text-gray-200">Edge Decay Scorecard</h2>
               <p className="text-xs text-gray-500 mt-0.5">How well each backtested edge is holding up live · worst first</p>
             </div>
-            {edgeDecay.length === 0 ? (
-              <div className="px-5 py-8 text-center text-gray-500 text-sm">
-                Need at least one setup with <span className="text-gray-400">both</span> backtest and live trades to score decay.
-              </div>
-            ) : (
               <div className="divide-y divide-gray-700/30">
                 {edgeDecay.map((row) => (
                   <div key={row.setup} className="px-5 py-4 flex items-center gap-4">
@@ -727,18 +732,16 @@ export default function BacktestPage() {
                   </div>
                 ))}
               </div>
-            )}
           </div>
+          )}
 
-          {/* Comparison table */}
+          {/* Comparison table — needs backtest trades, not just live ones */}
+          {hasBacktestComparison && (
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-700/50">
               <h2 className="text-sm font-semibold text-gray-200">Backtest vs Live — by Setup</h2>
               <p className="text-xs text-gray-500 mt-0.5">All backtest trades vs all live journal trades</p>
             </div>
-            {comparison.length === 0 ? (
-              <div className="px-5 py-8 text-center text-gray-500 text-sm">No data to compare yet</div>
-            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -805,10 +808,11 @@ export default function BacktestPage() {
                   </tbody>
                 </table>
               </div>
-            )}
           </div>
+          )}
 
-          {/* AI Summary */}
+          {/* AI Summary — nothing to analyze without backtest data */}
+          {hasBacktestComparison && (
           <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -829,6 +833,7 @@ export default function BacktestPage() {
               <p className="text-gray-600 text-sm">Click &ldquo;Generate Analysis&rdquo; to get an AI-powered behavioral gap report.</p>
             )}
           </div>
+          )}
         </div>
       )}
 
