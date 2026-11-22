@@ -24,11 +24,10 @@ import {
   Legend,
 } from 'recharts'
 import { Sparkles, Loader2 } from 'lucide-react'
-import MonteCarloTab from '@/components/reports/MonteCarloTab'
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
 import toast from 'react-hot-toast'
 
-type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'bracket' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'montecarlo' | 'setups' | 'dayofweek' | 'emotiongrade' | 'location'
+type Tab = 'overview' | 'hourly' | 'rmultiple' | 'maemfe' | 'bracket' | 'drawdown' | 'direction' | 'emotion' | 'whatif' | 'setups' | 'dayofweek' | 'emotiongrade' | 'location'
 type MatrixDim = 'time' | 'day' | 'bias'
 type DateRange = 'this-week' | 'this-month' | 'last-30' | 'all-time'
 type ScenarioId =
@@ -50,7 +49,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'direction', label: 'Direction' },
   { id: 'emotion', label: 'Emotion' },
   { id: 'whatif', label: 'What-If' },
-  { id: 'montecarlo', label: 'Monte Carlo' },
   { id: 'setups', label: 'Setup Matrix' },
   { id: 'dayofweek', label: 'Day of Week' },
   { id: 'emotiongrade', label: 'Emotion × Grade' },
@@ -1297,11 +1295,6 @@ const [matrixDim, setMatrixDim] = useState<MatrixDim>('time')
             Scenarios are hypothetical and client-side only. No data is written. R-multiple uses per-instrument point values (ES $50, NQ $20, MES $5, MNQ $2).
           </p>
         </div>
-      )}
-
-      {/* Monte Carlo Simulator */}
-      {tab === 'montecarlo' && (
-        <MonteCarloTab trades={dateFilteredTrades} />
       )}
 
       {/* ── Setup Performance Matrix ──────────────────────────────────────── */}
