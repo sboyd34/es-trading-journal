@@ -9,7 +9,7 @@ import {
   BOOTSTRAP_INNER_SIMS,
   type Adequacy,
 } from '@/lib/eval-uncertainty'
-import { APEX_CONFIGS, planFor, type AccountSize } from '@/lib/apex-config'
+import { APEX_CONFIGS, TRADING_PLAN, planFor, type AccountSize, type PlanSize } from '@/lib/apex-config'
 import { buildRSamples, type RSample, type SampleTrade } from '@/lib/eval-samples'
 
 // The plan's max per-trade risk on the 25K ($75) and 50K ($125), then 2x and
@@ -21,6 +21,16 @@ const FAN_DAYS = [
   65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120,
 ]
 
+// The trading plan's DAILY rules (TRADING_PLAN). When set, the simulation is
+// structured into real days: each day ends at its trade quota OR when the
+// first rule fires, and the rest of that day is skipped. The profit target
+// fires at the low end of the plan's range, as in Plan Replay.
+export interface PlanRules {
+  dailyLossHard: number
+  maxLosers: number
+  dailyProfitTarget: number
+}
+
 export interface EvalSimInput {
   startingEquity: number
   profitTarget: number
@@ -30,6 +40,14 @@ export interface EvalSimInput {
   currentEquity: number
   currentThreshold: number
   numSimulations: number
+  planRules: PlanRules | null
+}
+
+export interface OutcomeSummary {
+  passProb: number
+  failProb: number
+  timeoutProb: number
+  medianDaysToPass: number | null
 }
 
 export interface ComboComparison {
@@ -58,6 +76,22 @@ export interface EvalMonteCarloResponse {
   adequacy: Adequacy
   resolvedThreshold: number
   resolvedPassLevel: number
+  // Plan-aware: which rules drove the main result, and the same inputs run
+  // both with and without them (null when the account size has no plan).
+  planRulesApplied: boolean
+  planRules: PlanRules | null
+  planAccountSize: number | null
+  planComparison: { withPlan: OutcomeSummary; withoutPlan: OutcomeSummary } | null
+}
+
+const MAX_DAYS = 120
+
+// A fractional tradesPerDay (e.g. 2.5) becomes a per-day quota of 2 or 3
+// with the right average, and never zero.
+function drawQuota(tradesPerDay: number): number {
+  const base = Math.floor(tradesPerDay)
+  const quota = base + (Math.random() < tradesPerDay - base ? 1 : 0)
+  return Math.max(1, quota)
 }
 
 function pct(sorted: number[], p: number): number {
@@ -88,6 +122,7 @@ function simulate(
     currentEquity,
     currentThreshold,
     numSimulations,
+    planRules,
   } = input
 
   const passLevel = startingEquity + profitTarget
@@ -96,7 +131,11 @@ function simulate(
   // Funding evaluation agreement before relying on it — Apex has revised trailing
   // rules in the past.
   const freezeThreshold = startingEquity + 100
-  const maxTrades = Math.ceil(120 * tradesPerDay)
+  // Plan mode: every day takes at most ceil(tradesPerDay) trades, so this cap
+  // can never cut the run short of MAX_DAYS days.
+  const maxTrades = planRules
+    ? MAX_DAYS * Math.ceil(tradesPerDay)
+    : Math.ceil(MAX_DAYS * tradesPerDay)
   const n = samples.length
 
   let passCount = 0
@@ -112,6 +151,9 @@ function simulate(
       fanCheckpointMap.set(Math.round(day * tradesPerDay), i)
     })
   }
+  // Plan mode records the fan at real day ends instead of trade counts.
+  const fanByDay = new Map<number, number>()
+  if (collectFan && planRules) FAN_DAYS.forEach((day, i) => { if (day > 0) fanByDay.set(day, i) })
 
   for (let sim = 0; sim < numSimulations; sim++) {
     let equity = currentEquity
@@ -121,6 +163,13 @@ function simulate(
     let outcome: 'pass' | 'fail' | 'timeout' = 'timeout'
     let endTradeIdx = maxTrades
 
+    // Plan-mode day state
+    let day = 1
+    let dayPnl = 0
+    let dayLosers = 0
+    let dayTrades = 0
+    let quota = planRules ? drawQuota(tradesPerDay) : 0
+
     // Record day-0 equity
     if (collectFan) {
       const idx0 = fanCheckpointMap.get(0)
@@ -129,6 +178,7 @@ function simulate(
 
     for (let tradeIdx = 1; tradeIdx <= maxTrades; tradeIdx++) {
       const s = samples[Math.floor(Math.random() * n)]
+      const equityBefore = equity
 
       // Intra-trade MFE ratchet for winning trades (Apex trails on unrealized
       // peaks). Gated on MFE presence alone — this used to also require a
@@ -163,7 +213,30 @@ function simulate(
         break
       }
 
-      if (collectFan) {
+      if (planRules) {
+        // The day ends at its quota or at the first plan rule to fire.
+        const pnl = equity - equityBefore
+        dayPnl += pnl
+        if (pnl < 0) dayLosers++
+        dayTrades++
+        if (
+          dayPnl <= -planRules.dailyLossHard ||
+          dayLosers >= planRules.maxLosers ||
+          dayPnl >= planRules.dailyProfitTarget ||
+          dayTrades >= quota
+        ) {
+          if (collectFan) {
+            const fanIdx = fanByDay.get(day)
+            if (fanIdx !== undefined) fanEquities[fanIdx].push(equity)
+          }
+          day++
+          dayPnl = 0
+          dayLosers = 0
+          dayTrades = 0
+          quota = drawQuota(tradesPerDay)
+          if (day > MAX_DAYS) break
+        }
+      } else if (collectFan) {
         const fanIdx = fanCheckpointMap.get(tradeIdx)
         if (fanIdx !== undefined) fanEquities[fanIdx].push(equity)
       }
@@ -171,17 +244,17 @@ function simulate(
 
     // Fill remaining fan checkpoints with terminal equity for early-exit sims
     if (collectFan && outcome !== 'timeout') {
-      FAN_DAYS.forEach((day, i) => {
-        const checkpointTrade = Math.round(day * tradesPerDay)
-        if (checkpointTrade > endTradeIdx) {
-          fanEquities[i].push(equity)
-        }
+      FAN_DAYS.forEach((fanDay, i) => {
+        const pending = planRules
+          ? fanDay >= day && fanDay > 0 // that day had not ended when the sim stopped
+          : Math.round(fanDay * tradesPerDay) > endTradeIdx
+        if (pending) fanEquities[i].push(equity)
       })
     }
 
     if (outcome === 'pass') {
       passCount++
-      daysToPass.push(Math.ceil(endTradeIdx / tradesPerDay))
+      daysToPass.push(planRules ? day : Math.ceil(endTradeIdx / tradesPerDay))
     } else if (outcome === 'fail') {
       failCount++
     } else {
@@ -270,6 +343,19 @@ export async function POST(request: NextRequest) {
     )
 
     const body = await request.json().catch(() => ({}))
+
+    // The plan for this account size (25K/50K only). Applied unless the
+    // caller turns it off; both variants are returned for comparison anyway.
+    const plan = TRADING_PLAN[acctSize as PlanSize]
+    const accountPlanRules: PlanRules | null = plan
+      ? {
+          dailyLossHard: plan.dailyLossHard,
+          maxLosers: plan.maxLosers,
+          dailyProfitTarget: plan.dailyProfitTarget.min,
+        }
+      : null
+    const applyPlanRules = body.applyPlanRules !== false && accountPlanRules !== null
+
     const input: EvalSimInput = {
       startingEquity:   body.startingEquity   ?? dfltStartingEquity,
       profitTarget:     body.profitTarget     ?? cfg.profitTarget,
@@ -279,6 +365,7 @@ export async function POST(request: NextRequest) {
       currentEquity:    body.currentEquity    ?? dfltCurrentEquity,
       currentThreshold: body.currentThreshold ?? dfltCurrentThreshold,
       numSimulations:   Math.min(body.numSimulations ?? 10_000, 20_000),
+      planRules:        applyPlanRules ? accountPlanRules : null,
     }
 
     // Fetch live trades. stop_loss is deliberately not selected: see the
@@ -330,6 +417,25 @@ export async function POST(request: NextRequest) {
 
     const rComparison = buildComparison(samples, input)
 
+    // Same samples, same inputs — with and without the plan's daily rules.
+    // The main run already covers whichever mode is active.
+    const summarize = (r: SimResult): OutcomeSummary => {
+      const sorted = [...r.daysToPass].sort((a, b) => a - b)
+      return {
+        passProb: (r.passCount / input.numSimulations) * 100,
+        failProb: (r.failCount / input.numSimulations) * 100,
+        timeoutProb: (r.timeoutCount / input.numSimulations) * 100,
+        medianDaysToPass: sorted.length > 0 ? pct(sorted, 0.5) : null,
+      }
+    }
+    let planComparison: EvalMonteCarloResponse['planComparison'] = null
+    if (accountPlanRules) {
+      const other = simulate(samples, { ...input, planRules: applyPlanRules ? null : accountPlanRules }, input.riskPerTrade, false)
+      planComparison = applyPlanRules
+        ? { withPlan: summarize(mainResult), withoutPlan: summarize(other) }
+        : { withPlan: summarize(other), withoutPlan: summarize(mainResult) }
+    }
+
     const distinctDays = new Set(
       usableTrades.map(t => t.date).filter((d): d is string => d != null),
     ).size
@@ -377,6 +483,10 @@ export async function POST(request: NextRequest) {
       adequacy,
       resolvedThreshold: input.currentThreshold,
       resolvedPassLevel: input.startingEquity + input.profitTarget,
+      planRulesApplied:  applyPlanRules,
+      planRules:         accountPlanRules,
+      planAccountSize:   accountPlanRules ? acctSize : null,
+      planComparison,
     } satisfies EvalMonteCarloResponse)
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

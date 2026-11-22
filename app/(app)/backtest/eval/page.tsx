@@ -72,6 +72,8 @@ export default function EvalPage() {
   const [currentEquity,    setCurrentEquity]     = useState<number | null>(null)
   const [currentThreshold, setCurrentThreshold]  = useState<number | null>(null)
   const [numSimulations,   setNumSimulations]    = useState(10_000)
+  // Apply the trading plan's daily rules (hard stop, two losers, profit target)
+  const [applyPlanRules,   setApplyPlanRules]    = useState(true)
 
   const [result,       setResult]       = useState<EvalMonteCarloResponse | null>(null)
   const [loading,      setLoading]      = useState(false)
@@ -86,7 +88,7 @@ export default function EvalPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          riskPerTrade, tradesPerDay, numSimulations,
+          riskPerTrade, tradesPerDay, numSimulations, applyPlanRules,
           ...(startingEquity   !== null ? { startingEquity }   : {}),
           ...(profitTarget     !== null ? { profitTarget }     : {}),
           ...(trailingDrawdown !== null ? { trailingDrawdown } : {}),
@@ -117,7 +119,7 @@ export default function EvalPage() {
       setLoading(false)
     }
   }, [startingEquity, profitTarget, trailingDrawdown, riskPerTrade,
-      tradesPerDay, currentEquity, currentThreshold, numSimulations])
+      tradesPerDay, currentEquity, currentThreshold, numSimulations, applyPlanRules])
 
 
   return (
@@ -170,6 +172,16 @@ export default function EvalPage() {
           />
         </div>
         <div className="flex items-end gap-4 flex-wrap">
+          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={applyPlanRules}
+              onChange={(e) => setApplyPlanRules(e.target.checked)}
+              className="h-4 w-4 accent-blue-600"
+            />
+            Apply plan daily rules
+            <span className="text-xs text-gray-500">(hard stop · two losers · profit target)</span>
+          </label>
           <button
             onClick={runSimulation}
             disabled={loading}
@@ -258,6 +270,54 @@ export default function EvalPage() {
               ))}
             </div>
           </div>
+
+          {/* Plan vs no plan — same samples, same inputs */}
+          {result.planComparison && result.planRules && (
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-3">
+              <div className="flex items-baseline justify-between flex-wrap gap-2">
+                <h2 className="text-sm font-semibold text-gray-200">
+                  With the plan vs without — {(result.planAccountSize ?? 0) / 1000}K rules
+                </h2>
+                <p className="text-xs text-gray-500">
+                  −${result.planRules.dailyLossHard} hard stop · {result.planRules.maxLosers} losers · +${result.planRules.dailyProfitTarget} target ·
+                  headline above uses {result.planRulesApplied ? 'the plan' : 'no plan'}
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b border-gray-700/50">
+                    <th className="text-left py-2 font-medium"></th>
+                    <th className="text-right py-2 font-medium">Pass</th>
+                    <th className="text-right py-2 font-medium">Fail</th>
+                    <th className="text-right py-2 font-medium">Timeout</th>
+                    <th className="text-right py-2 font-medium">Median days to pass</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {([
+                    ['With the plan', result.planComparison.withPlan],
+                    ['Without', result.planComparison.withoutPlan],
+                  ] as const).map(([label, o]) => (
+                    <tr key={label} className="border-b border-gray-700/30 last:border-0">
+                      <td className="py-2 text-gray-300">{label}</td>
+                      <td className={cn('py-2 text-right tabular-nums font-semibold', passProbColor(o.passProb))}>{o.passProb.toFixed(1)}%</td>
+                      <td className="py-2 text-right tabular-nums text-red-400">{o.failProb.toFixed(1)}%</td>
+                      <td className="py-2 text-right tabular-nums text-gray-400">{o.timeoutProb.toFixed(1)}%</td>
+                      <td className="py-2 text-right tabular-nums text-blue-400">
+                        {o.medianDaysToPass != null ? `${o.medianDaysToPass}d` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {result.adequacy.verdict !== 'adequate' && (
+                <p className="text-xs text-amber-300/80">
+                  Both rows replay the same {result.adequacy.tradeCount} trades, so the gap between them is the plan&apos;s
+                  effect — but each row inherits the sample&apos;s uncertainty. Read it as a direction, not a precise number.
+                </p>
+              )}
+            </div>
+          )}
 
           {result.adequacy.blockers.length > 0 && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
