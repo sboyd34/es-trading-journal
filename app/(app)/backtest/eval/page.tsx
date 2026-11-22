@@ -74,6 +74,11 @@ export default function EvalPage() {
   const [numSimulations,   setNumSimulations]    = useState(10_000)
   // Apply the trading plan's daily rules (hard stop, two losers, profit target)
   const [applyPlanRules,   setApplyPlanRules]    = useState(true)
+  // Re-size every trade to the plan's fixed risk (vs replaying past sizing)
+  const [planSizing,       setPlanSizing]        = useState(true)
+  // Assume the 8-tick / +16-tick bracket held (plan sizing only) — off shows
+  // losses as actually taken
+  const [assumeBracket,    setAssumeBracket]     = useState(false)
 
   const [result,       setResult]       = useState<EvalMonteCarloResponse | null>(null)
   const [loading,      setLoading]      = useState(false)
@@ -89,6 +94,8 @@ export default function EvalPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           riskPerTrade, tradesPerDay, numSimulations, applyPlanRules,
+          sizing: planSizing ? 'plan' : 'actual',
+          bracket: planSizing && assumeBracket,
           ...(startingEquity   !== null ? { startingEquity }   : {}),
           ...(profitTarget     !== null ? { profitTarget }     : {}),
           ...(trailingDrawdown !== null ? { trailingDrawdown } : {}),
@@ -119,7 +126,7 @@ export default function EvalPage() {
       setLoading(false)
     }
   }, [startingEquity, profitTarget, trailingDrawdown, riskPerTrade,
-      tradesPerDay, currentEquity, currentThreshold, numSimulations, applyPlanRules])
+      tradesPerDay, currentEquity, currentThreshold, numSimulations, applyPlanRules, planSizing, assumeBracket])
 
 
   return (
@@ -181,6 +188,27 @@ export default function EvalPage() {
             />
             Apply plan daily rules
             <span className="text-xs text-gray-500">(hard stop · two losers · profit target)</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={planSizing}
+              onChange={(e) => setPlanSizing(e.target.checked)}
+              className="h-4 w-4 accent-blue-600"
+            />
+            Size trades to the plan
+            <span className="text-xs text-gray-500">(risk per trade behind an 8-tick stop — off replays past sizing)</span>
+          </label>
+          <label className={cn('flex items-center gap-2 text-sm cursor-pointer select-none', planSizing ? 'text-gray-300' : 'text-gray-600')}>
+            <input
+              type="checkbox"
+              checked={assumeBracket}
+              disabled={!planSizing}
+              onChange={(e) => setAssumeBracket(e.target.checked)}
+              className="h-4 w-4 accent-blue-600"
+            />
+            Assume the 8-tick bracket held
+            <span className="text-xs text-gray-500">(clip every trade to −1R…+2R — what honoring the stop is worth)</span>
           </label>
           <button
             onClick={runSimulation}

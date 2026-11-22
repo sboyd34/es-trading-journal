@@ -63,6 +63,44 @@ export interface SampleTrade {
   mfe: number | null
 }
 
+// PLAN-SIZED SAMPLES — "if I trade the plan's size, what are my odds?"
+//
+// The dollar replay above inherits whatever size was traded: three 4-contract
+// ES winners can carry a whole sample. The trading plan instead risks a FIXED
+// amount behind an 8-tick (2-point) stop — 1 ES or 12 MES on the 50K, 7 MES on
+// the 25K. So this expresses every trade in points captured PER CONTRACT and
+// measures it against that same 2-point stop:
+//
+//   r    = net_pnl / (quantity × point value) / 2
+//   mfeR = mfe (points, per contract) / 2
+//
+// One uniform denominator for every trade (contract size, then the fixed
+// stop) — not per-trade stops, which the header above rules out. simulate()
+// then multiplies by riskPerTrade, the dollar value of that 2-point stop at
+// plan size, so riskPerTrade means exactly what it means in the plan.
+export const PLAN_STOP_POINTS = 2 // the plan bracket's 8-tick stop
+export const PLAN_TARGET_R = 2    // +16 ticks, no runners
+
+// `bracket`: assume the plan's bracket held — every trade clipped to
+// [-1R, +2R], and open profit capped at the +2R target. Off by default,
+// because the history shows stops wider than 8 ticks; on, it answers "what
+// if I honor the stop?" (optimistic: a winner whose MAE would have touched
+// the stop is still counted as a winner when its MAE is unrecorded).
+export function buildPlanSizedSamples(
+  trades: SampleTrade[],
+  opts: { bracket?: boolean } = {},
+): RSample[] {
+  return trades.map(t => {
+    const pv = POINT_VALUES[t.instrument ?? 'ES'] ?? 50
+    const contracts = t.quantity && t.quantity > 0 ? t.quantity : 1
+    const r = t.net_pnl / (contracts * pv) / PLAN_STOP_POINTS
+    const mfeR = t.mfe != null ? t.mfe / PLAN_STOP_POINTS : null
+    return opts.bracket
+      ? { r: Math.min(Math.max(r, -1), PLAN_TARGET_R), mfeR: mfeR === null ? null : Math.min(mfeR, PLAN_TARGET_R) }
+      : { r, mfeR }
+  })
+}
+
 export function buildRSamples(trades: SampleTrade[], riskPerTrade: number): RSample[] {
   // riskPerTrade is the sole denominator. A non-positive or NaN value would
   // yield Infinity/NaN R values that simulate() would consume without

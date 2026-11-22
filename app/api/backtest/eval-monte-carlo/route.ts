@@ -10,7 +10,7 @@ import {
   type Adequacy,
 } from '@/lib/eval-uncertainty'
 import { APEX_CONFIGS, TRADING_PLAN, planFor, type AccountSize, type PlanSize } from '@/lib/apex-config'
-import { buildRSamples, type RSample, type SampleTrade } from '@/lib/eval-samples'
+import { buildRSamples, buildPlanSizedSamples, type RSample, type SampleTrade } from '@/lib/eval-samples'
 
 // The plan's max per-trade risk on the 25K ($75) and 50K ($125), then 2x and
 // 4x the 50K figure for contrast (trading_plan_apex_50k.pdf).
@@ -81,6 +81,8 @@ export interface EvalMonteCarloResponse {
   planRulesApplied: boolean
   planRules: PlanRules | null
   planAccountSize: number | null
+  sizing: 'plan' | 'actual'
+  bracket: boolean
   planComparison: { withPlan: OutcomeSummary; withoutPlan: OutcomeSummary } | null
 }
 
@@ -395,7 +397,16 @@ export async function POST(request: NextRequest) {
 
     const usableTrades = rawTrades.filter(t => t.net_pnl != null)
 
-    const samples: RSample[] = buildRSamples(usableTrades, input.riskPerTrade)
+    // 'plan' (default): every trade re-sized to the plan's fixed risk behind an
+    // 8-tick stop, so the odds describe the plan rather than past sizing.
+    // 'actual': replay the realized dollars as traded (lib/eval-samples).
+    const sizing: 'plan' | 'actual' = body.sizing === 'actual' ? 'actual' : 'plan'
+    // Plan sizing only: assume the 8-tick / +16-tick bracket held (clip to
+    // [-1R, +2R]). Off by default — the history has stops wider than 8 ticks.
+    const bracket = sizing === 'plan' && body.bracket === true
+    const samples: RSample[] = sizing === 'plan'
+      ? buildPlanSizedSamples(usableTrades, { bracket })
+      : buildRSamples(usableTrades, input.riskPerTrade)
     const excursionCount = samples.filter(s => s.mfeR !== null).length
 
     if (samples.length < 5) {
@@ -406,8 +417,14 @@ export async function POST(request: NextRequest) {
     }
 
     const riskInferenceNote =
-      `Replays realized net P&L across all ${samples.length} trades; ` +
-      `$${input.riskPerTrade}/trade scales position size uniformly. ` +
+      (sizing === 'plan'
+        ? `Sized to the plan: each of ${samples.length} trades re-scaled to its points per contract, ` +
+          `risking $${input.riskPerTrade} behind the plan's 8-tick stop — past contract counts are ignored. ` +
+          (bracket
+            ? `Bracket assumed to hold: every trade clipped to −1R…+2R (optimistic — it credits stops you did not always take). `
+            : `Losses are kept as actually taken, including ${samples.filter(s => s.r < -1).length} past the 8-tick stop. `)
+        : `Replays realized net P&L across all ${samples.length} trades as actually sized; ` +
+          `$${input.riskPerTrade}/trade scales position size uniformly. `) +
       (excursionCount === samples.length
         ? `MFE recorded on all ${samples.length}, so the trailing-threshold ratchet is modeled on every winner.`
         : `MFE recorded on ${excursionCount} of ${samples.length} — the trailing-threshold ratchet is unmodeled on the rest, which understates fail risk.`)
@@ -500,6 +517,8 @@ export async function POST(request: NextRequest) {
       planRules:         accountPlanRules,
       planAccountSize:   accountPlanRules ? acctSize : null,
       planComparison,
+      sizing,
+      bracket,
     } satisfies EvalMonteCarloResponse)
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
