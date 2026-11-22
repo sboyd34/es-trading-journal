@@ -134,6 +134,18 @@ export interface MatchFill {
   date: string
 }
 
+// A (account, contract, date) group whose fills are not self-contained: the
+// signed quantities do not sum to zero, so the stream either opened before the
+// window or is still open at its end. netQty is the leftover signed position
+// (positive = long carry, negative = short carry).
+export interface FillImbalance {
+  accountId: string | null
+  contractName: string
+  date: string
+  netQty: number
+  fillCount: number
+}
+
 // Within each (account, contract, date) bucket, walk fills in time order
 // tracking signed net position. Every time the position returns to flat, emit
 // exactly one round-turn trade — so a bracket order that fills in N pieces and
@@ -143,10 +155,26 @@ export interface MatchFill {
 // fee for every fill portion in the lifecycle; if any fill lacks a real fee, the
 // whole trade falls back to the round-turn estimate. Pass an empty feeMap (the
 // CSV path) to always use the estimate.
-export function matchFillsFlatToFlat(
+//
+// FLAT-START GUARD. The walk above is only valid if the group's first fill
+// opens a position. When an export window opens mid-position, the first fill is
+// really a CLOSE, gets read as an open, and every pairing downstream shifts by
+// one — blending entries from price regimes hours apart into a single
+// volume-weighted row. That produced a -$12,593.70 phantom (2 lots held 489
+// minutes across a 4.5% crash day) in a real import, and the error is unbounded
+// rather than a rounding drift.
+//
+// The detector is an invariant, not a heuristic: a self-contained flat-to-flat
+// stream ALWAYS has signed quantities summing to zero, so a nonzero sum is proof
+// the group is incomplete. It cannot tell WHICH end is truncated, though —
+// started-non-flat and ended-non-flat look identical — so seeding a guessed
+// carry position would just relocate the fabrication. We skip the group and
+// report it instead; callers surface the imbalance so the window can be widened
+// or the day re-exported.
+export function matchFillsWithDiagnostics(
   fills: MatchFill[],
   feeMap: Map<string, number>,
-): ParsedTrade[] {
+): { trades: ParsedTrade[]; imbalances: FillImbalance[] } {
   const groups = new Map<string, MatchFill[]>()
   for (const f of fills) {
     const accountKey = f.accountId != null ? String(f.accountId) : 'unknown'
@@ -156,9 +184,22 @@ export function matchFillsFlatToFlat(
   }
 
   const result: ParsedTrade[] = []
+  const imbalances: FillImbalance[] = []
 
   for (const group of Array.from(groups.values())) {
     group.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    const netQty = group.reduce((s, f) => s + (f.action === 'Buy' ? f.qty : -f.qty), 0)
+    if (netQty !== 0) {
+      imbalances.push({
+        accountId: group[0].accountId != null ? String(group[0].accountId) : null,
+        contractName: group[0].contractName,
+        date: group[0].date,
+        netQty,
+        fillCount: group.length,
+      })
+      continue
+    }
 
     const { instrument, date } = group[0]
     const brokerAccountId = group[0].accountId != null ? String(group[0].accountId) : null
@@ -258,7 +299,77 @@ export function matchFillsFlatToFlat(
   }
 
   result.sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime())
-  return result
+
+  // Warn here rather than at each call site so neither ingestion path can skip
+  // a group silently — server logs for the API sync, browser console for CSV.
+  if (imbalances.length > 0) {
+    console.warn(
+      `[tradovate] skipped ${imbalances.length} unbalanced fill group(s) — not flat-to-flat, ` +
+        'the export window likely opened or closed mid-position:',
+      imbalances.map((i) => `${i.contractName} ${i.date} net ${i.netQty > 0 ? '+' : ''}${i.netQty}`),
+    )
+  }
+
+  return { trades: result, imbalances }
+}
+
+// Trades-only view for callers that don't yet surface imbalances.
+export function matchFillsFlatToFlat(
+  fills: MatchFill[],
+  feeMap: Map<string, number>,
+): ParsedTrade[] {
+  return matchFillsWithDiagnostics(fills, feeMap).trades
+}
+
+// ── CSV round-turn merge predicate (Option B) ─────────────────────────────────
+// Each Tradovate Performance-CSV row is ALREADY a matched round turn: Tradovate
+// paired the fills and reported the P&L. Re-exploding rows into fills and
+// re-pairing them in time order is what scrambles entries and exits across
+// overlapping positions (a long's real exit becomes the next short's entry),
+// which corrupts per-trade prices, direction, and win/loss — though never the
+// total, since total gross = pv * SUM(sell notional - buy notional) regardless
+// of pairing.
+//
+// So instead of re-pairing, we keep Tradovate's pairing and merge only rows
+// that are provably the same underlying position (a bracket order that filled
+// in several pieces). This predicate decides what "same position" means.
+export interface CsvRoundTurn {
+  direction: 'long' | 'short'
+  qty: number
+  entryPrice: number
+  exitPrice: number
+  entryTime: Date
+  exitTime: Date
+  entryFillId: string
+  exitFillId: string
+  contractName: string
+  instrument: string
+  accountId?: string
+}
+
+// Two round turns are ONE journal trade exactly when the account was never flat
+// between them. That is the same flat-to-flat definition the API path uses, just
+// applied to Tradovate's own pairing instead of to re-exploded fills:
+//
+//   - same direction — opposite directions can never be one position, and
+//     merging across them is precisely what produced the scramble.
+//   - `next` opens before `prev` closes — if next's entry precedes prev's exit,
+//     position never returned to zero in between, so the two rows are pieces of
+//     one position (a bracket that filled in several parts).
+//
+// Deliberately NO time-gap constant. An overlap test is provable from the
+// timestamps; a "within N seconds" threshold is a guess that silently fuses two
+// genuine setups into one blended row with an off-tick average price. If `next`
+// starts after `prev` exits, the position went flat — that is two trades, even
+// if the re-entry came three seconds later.
+//
+// `prev` may already be a merge of earlier rows, in which case its exitTime is
+// the latest exit so far, which makes the chaining transitive.
+export function shouldMergeRoundTurns(prev: CsvRoundTurn, next: CsvRoundTurn): boolean {
+  if (prev.direction !== next.direction) return false
+  if (prev.contractName !== next.contractName) return false
+  if (prev.accountId !== next.accountId) return false
+  return next.entryTime.getTime() < prev.exitTime.getTime()
 }
 
 export function parseTradovateCSV(csvText: string): ParsedTrade[] {
@@ -272,12 +383,13 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
     console.warn('CSV parse warnings:', result.errors)
   }
 
-  // Each Performance-CSV row is one matched buy+sell fill pair. Explode every
-  // row back into its two underlying fills, then replay them through the shared
-  // flat-to-flat matcher so a bracket order Tradovate exported as several
-  // partial-fill rows collapses into a single round-turn trade — identical
-  // grouping to the live API sync. Empty feeMap → round-turn fee estimate.
-  const fills: MatchFill[] = []
+  // Each Performance-CSV row is one matched buy+sell fill pair — Tradovate has
+  // ALREADY paired the fills. Keep that pairing: read each row as a round turn
+  // and fold only rows that provably belong to the same position (see
+  // shouldMergeRoundTurns). The old path exploded rows back into fills and
+  // re-paired them in time order, which let a long's real exit become the next
+  // short's entry whenever two positions overlapped.
+  const roundTurns: CsvRoundTurn[] = []
 
   for (const row of result.data) {
     const symbol      = (row.symbol         ?? '').trim()
@@ -306,31 +418,87 @@ export function parseTradovateCSV(csvText: string): ParsedTrade[] {
     const boughtDate = parseTimestamp(boughtTs)
     const soldDate   = soldTs ? parseTimestamp(soldTs) : boughtDate
 
-    // The matcher derives direction from fill time order: for a short the sell
-    // fill carries the earlier timestamp, so it opens the position first.
-    fills.push({
-      id: buyFillId,
-      action: 'Buy',
+    // Direction comes from which leg opened the position: bought first = long,
+    // sold first = short. Ties (and a missing soldTimestamp) read as long,
+    // matching the old fill-replay behaviour.
+    const isLong = boughtDate.getTime() <= soldDate.getTime()
+
+    roundTurns.push({
+      direction: isLong ? 'long' : 'short',
       qty,
-      price: buyPrice,
-      timestamp: boughtDate.toISOString(),
-      accountId,
+      entryPrice: isLong ? buyPrice : sellPrice,
+      exitPrice: isLong ? sellPrice : buyPrice,
+      entryTime: isLong ? boughtDate : soldDate,
+      exitTime: isLong ? soldDate : boughtDate,
+      entryFillId: isLong ? buyFillId : sellFillId,
+      exitFillId: isLong ? sellFillId : buyFillId,
       contractName: symbol,
       instrument,
-      date: getTodayChicagoDateString(boughtDate),
-    })
-    fills.push({
-      id: sellFillId,
-      action: 'Sell',
-      qty,
-      price: sellPrice,
-      timestamp: soldDate.toISOString(),
       accountId,
-      contractName: symbol,
-      instrument,
-      date: getTodayChicagoDateString(soldDate),
     })
   }
 
-  return matchFillsFlatToFlat(fills, new Map())
+  // Fold within (account, contract, date) groups — the same grouping the API
+  // path uses. Folding one globally time-sorted list instead would let an
+  // interleaved row from another contract sit between two pieces of the same
+  // bracket and block their merge.
+  const groups = new Map<string, CsvRoundTurn[]>()
+  for (const rt of roundTurns) {
+    const key = `${rt.accountId ?? 'unknown'}_${rt.contractName}_${getTodayChicagoDateString(rt.entryTime)}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(rt)
+  }
+
+  // Prices are notional-weighted, so a 3-piece bracket entry reports one
+  // blended entry price exactly as the flat-to-flat matcher did.
+  const merged: CsvRoundTurn[] = []
+  for (const group of Array.from(groups.values())) {
+    group.sort((a, b) => a.entryTime.getTime() - b.entryTime.getTime())
+
+    let open: CsvRoundTurn | null = null
+    for (const rt of group) {
+      if (open && shouldMergeRoundTurns(open, rt)) {
+        const qty = open.qty + rt.qty
+        open.entryPrice = (open.entryPrice * open.qty + rt.entryPrice * rt.qty) / qty
+        open.exitPrice = (open.exitPrice * open.qty + rt.exitPrice * rt.qty) / qty
+        open.qty = qty
+        if (rt.exitTime.getTime() > open.exitTime.getTime()) {
+          open.exitTime = rt.exitTime
+          open.exitFillId = rt.exitFillId
+        }
+        continue
+      }
+      open = { ...rt }
+      merged.push(open)
+    }
+  }
+
+  merged.sort((a, b) => a.entryTime.getTime() - b.entryTime.getTime())
+
+  return merged.map((rt) => {
+    const pointValue = POINT_VALUES[rt.instrument] ?? 50
+    const pnl =
+      (rt.direction === 'long'
+        ? rt.exitPrice - rt.entryPrice
+        : rt.entryPrice - rt.exitPrice) *
+      pointValue *
+      rt.qty
+    const commission = feeForContracts(rt.instrument, rt.qty)
+    return {
+      date: getTodayChicagoDateString(rt.entryTime),
+      entry_time: rt.entryTime.toISOString(),
+      exit_time: rt.exitTime.toISOString(),
+      direction: rt.direction,
+      quantity: rt.qty,
+      entry_price: rt.entryPrice,
+      exit_price: rt.exitPrice,
+      gross_pnl: Math.round(pnl * 100) / 100,
+      commission: Math.round(commission * 100) / 100,
+      net_pnl: Math.round((pnl - commission) * 100) / 100,
+      tradovate_order_id: `${rt.entryFillId}_${rt.exitFillId}`,
+      instrument: rt.instrument,
+      pnl_raw: '',
+      broker_account_id: rt.accountId ?? null,
+    }
+  })
 }
