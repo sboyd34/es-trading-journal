@@ -126,11 +126,14 @@ function simulate(
   } = input
 
   const passLevel = startingEquity + profitTarget
-  // FREEZE RULE: The Apex trailing threshold stops trailing once it reaches
-  // startingEquity + 100. Verify this freeze level against the current Apex Trader
-  // Funding evaluation agreement before relying on it — Apex has revised trailing
-  // rules in the past.
-  const freezeThreshold = startingEquity + 100
+  // FREEZE RULE (Apex LEGACY evaluation): the trail does not lock at
+  // startingEquity + 100 — that is the PA rule. During the eval, Tradovate
+  // accounts never stop trailing, and Rithmic/WealthCharts stop only when the
+  // THRESHOLD reaches the profit target (e.g. $53,000 on the 50K). The
+  // threshold sits a full drawdown below the peak, so neither can freeze
+  // before the balance passes; capping at passLevel models both. Verify
+  // against the current Apex agreement — they have revised trailing before.
+  const freezeThreshold = passLevel
   // Plan mode: every day takes at most ceil(tradesPerDay) trades, so this cap
   // can never cut the run short of MAX_DAYS days.
   const maxTrades = planRules
@@ -333,13 +336,14 @@ export async function POST(request: NextRequest) {
     const cfg = APEX_CONFIGS[acctSize] ?? APEX_CONFIGS[250_000]
     const dfltStartingEquity  = acct?.starting_balance ?? acctSize
     const dfltCurrentEquity   = acct?.current_balance  ?? dfltStartingEquity
-    // Apex trails the threshold on the high-water mark and freezes it at
-    // startingEquity + 100. Derive rather than store: highest_balance is the
-    // HWM the tracker already maintains.
+    // Apex trails the threshold on the high-water mark; during a legacy eval
+    // it keeps trailing up to the pass level (see the freeze rule in
+    // simulate). Derive rather than store: highest_balance is the HWM the
+    // tracker already maintains.
     const hwm                 = acct?.highest_balance  ?? dfltCurrentEquity
     const dfltCurrentThreshold = Math.min(
       hwm - cfg.trailingDrawdown,
-      dfltStartingEquity + 100,
+      dfltStartingEquity + cfg.profitTarget,
     )
 
     const body = await request.json().catch(() => ({}))
