@@ -119,7 +119,7 @@ const KILL_SWITCH_BASE = (target: string, loss: string) => [
   'Never widen a stop loss — ever',
   'Never add to a losing position',
   'Avoid midday chop (12:00 PM – 2:00 PM CT) unless setup is crystal clear',
-  '/ES requires all 3 conditions met simultaneously — missing any one = /MES only',
+  '/ES only when every /ES authorization condition is met — missing any one = /MES only',
 ]
 
 export default function FrameworkPage() {
@@ -175,7 +175,7 @@ export default function FrameworkPage() {
                   ['Per-Trade Risk (1:2 reward)', '$60–$75'],
                   ['Default (always)', '/MES — 7 contracts ($70 at 8 ticks)'],
                   ['Breakeven Trigger', 'Trade up ~$100+'],
-                  ['All 3 ES conditions met', '/ES — 1 contract'],
+                  ['/ES (authorized only)', 'PA phase 2 — see below'],
                 ]}
               />
               <div className="mt-4">
@@ -188,11 +188,15 @@ export default function FrameworkPage() {
             <SectionCard title="/ES Authorization — All 3 Conditions Required">
               <KVTable
                 rows={[
-                  ['Account Status', 'PA only — NEVER during Eval'],
-                  ['Buffer Above Drawdown', '$1,500+ above locked drawdown'],
+                  ['Account Status', 'PA phase 2 only — NEVER in Eval or before the trail locks'],
+                  ['Buffer Above Drawdown', '$1,500+ above the locked floor ($25,100)'],
                   ['ATR at Entry', 'Under 6 — else /ES off the table'],
                 ]}
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
+                Why: 1 ES at the 8-tick stop risks $100 — over the plan&apos;s $75 max per trade on the 25K.
+                The plan allows a modest size-up only once the trail has locked.
+              </p>
             </SectionCard>
           </div>
         </div>
@@ -296,7 +300,7 @@ export default function FrameworkPage() {
                   ['Per-Trade Risk (1:2 reward)', '$100–$125'],
                   ['Default (always)', '/MES — 12 contracts ($120 at 8 ticks)'],
                   ['Breakeven Trigger', 'Trade up ~$150+'],
-                  ['All 3 ES conditions met', '/ES — 1 contract'],
+                  ['/ES (authorized only)', '1 contract ($100 at 8 ticks)'],
                 ]}
               />
               <div className="mt-4">
@@ -306,14 +310,18 @@ export default function FrameworkPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="/ES Authorization — All 3 Conditions Required">
+            <SectionCard title="/ES Authorization — Both Conditions Required">
               <KVTable
                 rows={[
                   ['Account Status', 'Eval OR PA — available in both'],
-                  ['Buffer Above Drawdown', '$500+ above locked drawdown'],
                   ['ATR at Entry', 'Under 6 — else /ES off the table'],
                 ]}
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
+                1 ES at the 8-tick stop risks $100 with a +16t ($200) target and breakeven at +12t ($150) —
+                exactly the plan&apos;s 50K numbers, and less risk than the 12-MES default ($120). No extra
+                buffer gate: it adds no risk the plan doesn&apos;t already allow.
+              </p>
             </SectionCard>
           </div>
         </div>
@@ -412,8 +420,9 @@ export default function FrameworkPage() {
               { label: 'Daily Max Loss (HARD)', values: ['-$150', '-$250'] },
               { label: 'Default Instrument', values: ['/MES — 7', '/MES — 12'] },
               { label: '/ES Contracts (if authorized)', values: ['1', '1'] },
+              { label: '/ES Risk at 8 Ticks vs Plan Max', values: ['$100 > $75 max', '$100 ≤ $125 max'] },
               { label: '/ES Available During Eval?', values: ['NO', 'YES'] },
-              { label: '/ES Buffer Required', values: ['$1,500+', '$500+'] },
+              { label: '/ES Buffer Required', values: ['$1,500+ (PA phase 2)', 'None'] },
               { label: '/ES ATR Requirement', values: ['Under 6', 'Under 6'] },
               { label: 'Loss Limit', values: ['2 losers = done', '2 losers = done'] },
               { label: 'Cooldown After Loss', values: ['10 min', '10 min'] },

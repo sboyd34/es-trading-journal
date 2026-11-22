@@ -124,13 +124,13 @@ export default function BracketSpecCard() {
       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 flex items-start gap-3">
         <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
         <p className="text-sm text-amber-200 leading-relaxed">
-          <span className="font-semibold">ES is OFF-LIMITS</span> until a
-          funded account has built a <span className="font-mono">$750+</span>{' '}
-          buffer above the locked drawdown. An 8-tick ES stop is{' '}
-          <span className="font-mono">$100/contract</span> — over the 25K&apos;s
-          $75 max risk. On the 50K it fits the $100–$125 band, so there it is a
-          discipline rule, not a sizing one. No runners: the trail counts open
-          profit.
+          <span className="font-semibold">ES only where the plan allows it.</span>{' '}
+          An 8-tick ES stop is <span className="font-mono">$100/contract</span>.
+          On the 50K that fits the $100–$125 band — 1 ES, +16t target ($200),
+          breakeven at +12t ($150), ATR under 6. On the 25K it is over the $75
+          max, so ES waits until the PA trail locks with{' '}
+          <span className="font-mono">$1,500+</span> above it. No runners: the
+          trail counts open profit.
         </p>
       </div>
     </section>

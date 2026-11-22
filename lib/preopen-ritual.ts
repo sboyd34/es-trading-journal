@@ -23,7 +23,7 @@ export const THE_15_RULES: readonly string[] = [
   'Two-strike rule on setups: if the same setup fails twice in a row, skip it for the day.',
   'No trading FOMC / CPI / NFP windows on these account sizes. Drawdowns are too tight.',
   'Midday (11:00–14:00 ET) is often chop — trade it only on a clean A+ setup, never out of boredom.',
-  'ES is OFF-LIMITS until I have a funded account with $750+ buffer above the locked drawdown.',
+  'ES only where the plan allows it: 1 ES on the 50K (8-tick stop = $100, ATR under 6). On the 25K, never until the PA trail locks with $1,500+ above it.',
   'On the PA, the first $100 (25K) / $250 (50K) is sacred. After that, ONE optional trade. Then done.',
   'If I am behind pace on the 30-day eval, the rule is RESET if needed — not size up. A failed reset is cheaper than a blown PA.',
 ] as const
