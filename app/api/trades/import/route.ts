@@ -16,10 +16,23 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { trades }: { trades: ParsedTrade[] } = body
+    const { trades, accountId: pickedAccountId }: { trades: ParsedTrade[]; accountId?: string | null } = body
 
     if (!Array.isArray(trades) || trades.length === 0) {
       return NextResponse.json({ error: 'No trades provided' }, { status: 400 })
+    }
+
+    // The account picked on the Import tab. Prop-firm Performance exports carry
+    // no account column, so this is the only way a CSV's trades reach the
+    // right account (and so the right plan limits on the dashboard).
+    if (pickedAccountId) {
+      const { data: owned } = await supabase
+        .from('apex_accounts')
+        .select('id')
+        .eq('id', pickedAccountId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!owned) return NextResponse.json({ error: 'Unknown account' }, { status: 400 })
     }
 
     // Sanity check: a trade dated more than 1 day past America/Chicago "today"
@@ -79,7 +92,9 @@ export async function POST(request: NextRequest) {
       const instrument = trade.instrument || 'ES'
       const quantity = trade.quantity
       const commission = feeForContracts(instrument, quantity)
-      const accountId = trade.broker_account_id ? brokerToAccountId.get(trade.broker_account_id) ?? null : null
+      // A broker id in the file itself wins; otherwise the picked account.
+      const accountId = (trade.broker_account_id ? brokerToAccountId.get(trade.broker_account_id) : undefined)
+        ?? pickedAccountId ?? null
       const nearbyNews = newsByEntryTime.get(trade.entry_time) ?? []
 
       console.log('[import] instrument:', instrument, '| qty:', quantity, '| commission:', commission, '| account:', accountId, '| news:', nearbyNews.length)

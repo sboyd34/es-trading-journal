@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { Trade } from '@/types'
+import { Trade, ApexAccount } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { parseTradovateCSV } from '@/lib/tradovate-parser'
 import { formatCurrency, getMoodEmoji, getGradeColor, getPnLColor, cn } from '@/lib/utils'
@@ -71,6 +71,11 @@ export default function JournalPage() {
   // Import state
   const [parsedTrades, setParsedTrades] = useState<ReturnType<typeof parseTradovateCSV>>([])
   const [importing, setImporting] = useState(false)
+  // Which Apex account the CSV belongs to. Deliberately no default and not
+  // remembered: one wrong default would silently book a 50K file onto the 25K.
+  // '' = not chosen yet; 'none' = import unlinked (link later).
+  const [accounts, setAccounts] = useState<ApexAccount[]>([])
+  const [importAccountId, setImportAccountId] = useState<string>('')
   const [dragOver, setDragOver] = useState(false)
 
   // Bulk delete selection (Set of trade IDs)
@@ -100,6 +105,21 @@ export default function JournalPage() {
   useEffect(() => {
     loadTrades()
   }, [loadTrades])
+
+  // Apex accounts for the Import tab's account picker
+  useEffect(() => {
+    const loadAccounts = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data } = await supabase
+        .from('apex_accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at')
+      setAccounts((data as ApexAccount[]) || [])
+    }
+    loadAccounts()
+  }, [supabase])
 
   // Fetch today's daily_session for EOD gate check
   useEffect(() => {
@@ -250,25 +270,30 @@ export default function JournalPage() {
   }
 
   async function handleImportAll() {
-    if (!parsedTrades.length) return
+    if (!parsedTrades.length || !importAccountId) return
     setImporting(true)
     try {
       const res = await fetch('/api/trades/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades: parsedTrades }),
+        body: JSON.stringify({
+          trades: parsedTrades,
+          accountId: importAccountId === 'none' ? null : importAccountId,
+        }),
       })
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Import failed')
       }
       const { inserted, skipped } = await res.json()
+      const into = accounts.find((a) => a.id === importAccountId)?.name
       toast.success(
-        skipped > 0
+        (skipped > 0
           ? `Imported ${inserted} trades (${skipped} already on file)`
-          : `Imported ${inserted} trades!`,
+          : `Imported ${inserted} trades!`) + (into ? ` → ${into}` : ''),
       )
       setParsedTrades([])
+      setImportAccountId('')
       setTab('log')
       loadTrades()
 
@@ -826,13 +851,36 @@ export default function JournalPage() {
                 <h3 className="text-sm font-semibold text-gray-200">
                   Preview — {parsedTrades.length} trades found
                 </h3>
-                <button
-                  onClick={handleImportAll}
-                  disabled={importing}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
-                >
-                  {importing ? 'Saving...' : `Save All ${parsedTrades.length} Trades`}
-                </button>
+                <div className="flex items-center gap-3">
+                  {/* Performance exports have no account column — pick it per file */}
+                  <label className="flex items-center gap-2 text-xs text-gray-400">
+                    Import into
+                    <select
+                      value={importAccountId}
+                      onChange={(e) => setImportAccountId(e.target.value)}
+                      className={cn(
+                        'bg-gray-900 border rounded-lg px-2.5 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500',
+                        importAccountId ? 'border-gray-700' : 'border-amber-500/60',
+                      )}
+                    >
+                      <option value="" disabled>Choose account…</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} · {(a.account_size / 1000).toFixed(0)}K {a.mode === 'evaluation' ? 'Eval' : 'PA'}
+                        </option>
+                      ))}
+                      <option value="none">No account (link later)</option>
+                    </select>
+                  </label>
+                  <button
+                    onClick={handleImportAll}
+                    disabled={importing || !importAccountId}
+                    title={!importAccountId ? 'Choose which account this CSV belongs to' : undefined}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
+                  >
+                    {importing ? 'Saving...' : `Save All ${parsedTrades.length} Trades`}
+                  </button>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
