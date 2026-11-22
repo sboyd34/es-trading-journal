@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Trade, RiskRules } from '@/types'
+import { Trade, RiskRules, ApexAccount } from '@/types'
 import { cn, formatCurrency } from '@/lib/utils'
+import { accountRiskGroups, accountRiskUsage } from '@/lib/account-risk'
 import { parseISO, subDays } from 'date-fns'
 import { ShieldAlert, AlertTriangle, TrendingDown, Brain, CheckCircle2, Zap } from 'lucide-react'
 
@@ -17,48 +18,56 @@ interface CoachingSignal {
 interface Props {
   trades: Trade[]
   todayTrades: Trade[]
+  accounts: ApexAccount[]
   riskRules: RiskRules
 }
 
 const EMOTIONAL_MOODS = new Set(['FOMO', 'revenge', 'anxious', 'overconfident'])
 
-// Soft stop ≈ 60% of hard stop (matches Apex eval 150/250 ratio).
+// Soft stop ≈ 60% of each account's hard daily stop.
 const SOFT_STOP_RATIO = 0.6
 
-export default function ProactiveCoachingCard({ trades, todayTrades, riskRules }: Props) {
+export default function ProactiveCoachingCard({ trades, todayTrades, accounts, riskRules }: Props) {
   const signals = useMemo<CoachingSignal[]>(() => {
     const result: CoachingSignal[] = []
-    const todayPnL = todayTrades.reduce((s, t) => s + t.net_pnl, 0)
-    const dailyLoss = Math.max(-todayPnL, 0)
-    const softStop = riskRules.max_daily_loss * SOFT_STOP_RATIO
-    const hardStop = riskRules.max_daily_loss
-
-    // ── Apex drawdown ─────────────────────────────────────────────────────────
-    if (dailyLoss >= hardStop) {
-      result.push({
-        id: 'apex-hard-stop',
-        severity: 'critical',
-        icon: <ShieldAlert className="h-4 w-4 flex-shrink-0" />,
-        title: 'Hard stop reached — session is over',
-        detail: `Down ${formatCurrency(dailyLoss)} today. Hard stop is ${formatCurrency(hardStop)}. Close the platform now.`,
-      })
-    } else if (dailyLoss >= softStop) {
-      const remaining = hardStop - dailyLoss
-      result.push({
-        id: 'apex-soft-stop',
-        severity: 'critical',
-        icon: <AlertTriangle className="h-4 w-4 flex-shrink-0" />,
-        title: 'Soft stop breached — trade half base size',
-        detail: `Down ${formatCurrency(dailyLoss)}. ${formatCurrency(remaining)} left to hard stop. Reduce to half size for any remaining trades.`,
-      })
-    } else if (dailyLoss >= softStop * 0.7 && dailyLoss > 0) {
-      result.push({
-        id: 'apex-approaching',
-        severity: 'warning',
-        icon: <AlertTriangle className="h-4 w-4 flex-shrink-0" />,
-        title: 'Approaching soft stop',
-        detail: `Down ${formatCurrency(dailyLoss)} — soft stop is ${formatCurrency(softStop)}. ${formatCurrency(softStop - dailyLoss)} remaining before size reduction kicks in.`,
-      })
+    // ── Daily stop, per account ───────────────────────────────────────────────
+    // Each Apex account is held to its own plan's hard daily stop
+    // (lib/account-risk); unlinked trades fall back to the Settings limit.
+    const groups = accountRiskGroups(todayTrades, accounts, riskRules).filter((g) => g.trades.length > 0)
+    const named = groups.length > 1
+    let nearStop = false
+    for (const g of groups) {
+      const { dailyLoss } = accountRiskUsage(g)
+      const hardStop = g.dailyLossLimit
+      const softStop = hardStop * SOFT_STOP_RATIO
+      const who = named ? `${g.label}: ` : ''
+      if (dailyLoss >= softStop * 0.5) nearStop = true
+      if (dailyLoss >= hardStop) {
+        result.push({
+          id: `apex-hard-stop-${g.key}`,
+          severity: 'critical',
+          icon: <ShieldAlert className="h-4 w-4 flex-shrink-0" />,
+          title: `${who}Hard stop reached — session is over`,
+          detail: `Down ${formatCurrency(dailyLoss)} today. Hard stop is ${formatCurrency(hardStop)}. Close the platform now.`,
+        })
+      } else if (dailyLoss >= softStop) {
+        const remaining = hardStop - dailyLoss
+        result.push({
+          id: `apex-soft-stop-${g.key}`,
+          severity: 'critical',
+          icon: <AlertTriangle className="h-4 w-4 flex-shrink-0" />,
+          title: `${who}Soft stop breached — trade half base size`,
+          detail: `Down ${formatCurrency(dailyLoss)}. ${formatCurrency(remaining)} left to hard stop. Reduce to half size for any remaining trades.`,
+        })
+      } else if (dailyLoss >= softStop * 0.7 && dailyLoss > 0) {
+        result.push({
+          id: `apex-approaching-${g.key}`,
+          severity: 'warning',
+          icon: <AlertTriangle className="h-4 w-4 flex-shrink-0" />,
+          title: `${who}Approaching soft stop`,
+          detail: `Down ${formatCurrency(dailyLoss)} — soft stop is ${formatCurrency(softStop)}. ${formatCurrency(softStop - dailyLoss)} remaining before size reduction kicks in.`,
+        })
+      }
     }
 
     // ── Consecutive loss streak (across recent trades, not just today) ────────
@@ -129,7 +138,7 @@ export default function ProactiveCoachingCard({ trades, todayTrades, riskRules }
       if (t.net_pnl > 0) winStreak++
       else break
     }
-    if (winStreak >= 3 && lossStreak === 0 && dailyLoss < softStop * 0.5) {
+    if (winStreak >= 3 && lossStreak === 0 && !nearStop) {
       result.push({
         id: 'win-streak',
         severity: 'positive',
@@ -142,7 +151,7 @@ export default function ProactiveCoachingCard({ trades, todayTrades, riskRules }
     // Sort: critical → warning → positive
     const order: Record<string, number> = { critical: 0, warning: 1, positive: 2 }
     return result.sort((a, b) => order[a.severity] - order[b.severity])
-  }, [trades, todayTrades, riskRules])
+  }, [trades, todayTrades, accounts, riskRules])
 
   if (signals.length === 0) return null
 

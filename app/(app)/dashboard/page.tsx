@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Trade, RiskRules, DailySession } from '@/types'
+import { Trade, RiskRules, DailySession, ApexAccount } from '@/types'
 import DashboardClient from './DashboardClient'
 import { getTodayChicagoDateString } from '@/lib/eod-gate'
 
@@ -34,6 +34,13 @@ export default async function DashboardPage() {
     .eq('user_id', user.id)
     .single()
 
+  // Fetch Apex accounts — each is held to its own trading-plan limits
+  const { data: accountsData } = await supabase
+    .from('apex_accounts')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at')
+
   // Fetch today's session
   const { data: sessionData } = await supabase
     .from('daily_sessions')
@@ -56,6 +63,7 @@ export default async function DashboardPage() {
       trades={(trades as Trade[]) || []}
       todayTrades={(todayTrades as Trade[]) || []}
       riskRules={(riskRulesData as RiskRules) || defaultRiskRules}
+      accounts={(accountsData as ApexAccount[]) || []}
       session={(sessionData as DailySession) || null}
       userId={user.id}
       date={today}

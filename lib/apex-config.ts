@@ -27,6 +27,7 @@ export const TRADING_PLAN = {
     riskPerTrade: { min: 60, max: 75 },
     rewardRisk: 2,
     dailyLossHard: 150,                 // two losers, done
+    maxLosers: 2,
     dailyProfitTarget: { min: 180, max: 225 },
     breakevenAt: 100,                   // move stop to BE once a trade is up ~this much
     minTradingDays: 7,
@@ -36,6 +37,7 @@ export const TRADING_PLAN = {
     riskPerTrade: { min: 100, max: 125 },
     rewardRisk: 2,
     dailyLossHard: 250,
+    maxLosers: 2,
     dailyProfitTarget: { min: 300, max: 375 },
     breakevenAt: 150,
     minTradingDays: 0,

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, useEffect, useCallback } from 'react'
-import { Trade, RiskRules, DailySession, DashboardStats } from '@/types'
+import { Trade, RiskRules, DailySession, DashboardStats, ApexAccount } from '@/types'
 import { isSystemTrade } from '@/lib/trade-flags'
 import StatsCards from '@/components/dashboard/StatsCards'
 import EquityCurve from '@/components/dashboard/EquityCurve'
@@ -29,6 +29,7 @@ interface DashboardClientProps {
   trades: Trade[]
   todayTrades: Trade[]
   riskRules: RiskRules
+  accounts: ApexAccount[]
   session: DailySession | null
   userId: string
   date: string
@@ -97,7 +98,7 @@ function computeStats(trades: Trade[], todayTrades: Trade[]): DashboardStats {
   }
 }
 
-export default function DashboardClient({ trades, todayTrades, riskRules, session, userId, date }: DashboardClientProps) {
+export default function DashboardClient({ trades, todayTrades, riskRules, accounts, session, userId, date }: DashboardClientProps) {
   const stats = useMemo(() => computeStats(trades, todayTrades), [trades, todayTrades])
   const gateActive = useMemo(
     () => isGateActive(new Date(), todayTrades, session),
@@ -133,7 +134,7 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
       )}
 
       {/* Proactive coaching — only renders when signals are present */}
-      <ProactiveCoachingCard trades={trades} todayTrades={todayTrades} riskRules={riskRules} />
+      <ProactiveCoachingCard trades={trades} todayTrades={todayTrades} accounts={accounts} riskRules={riskRules} />
 
       {/* Auto-pulled SPY market state */}
       <MarketStateCard />
@@ -198,7 +199,7 @@ export default function DashboardClient({ trades, todayTrades, riskRules, sessio
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <WeekEquityCurve trades={trades} />
         <TiltMeter todayTrades={todayTrades} />
-        <RiskRulesBars todayTrades={todayTrades} riskRules={riskRules} />
+        <RiskRulesBars todayTrades={todayTrades} accounts={accounts} riskRules={riskRules} />
       </div>
     </div>
   )

@@ -1,11 +1,13 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Trade, RiskRules } from '@/types'
+import { Trade, RiskRules, ApexAccount } from '@/types'
 import { formatCurrency, cn } from '@/lib/utils'
+import { accountRiskGroups, accountRiskUsage } from '@/lib/account-risk'
 
 interface RiskRulesBarsProps {
   todayTrades: Trade[]
+  accounts: ApexAccount[]
   riskRules: RiskRules
 }
 
@@ -54,60 +56,66 @@ function RuleBar({ label, current, max, format = String }: RuleBarProps) {
   )
 }
 
-export default function RiskRulesBars({ todayTrades, riskRules }: RiskRulesBarsProps) {
-  const { dailyLoss, consecutiveLosses } = useMemo(() => {
-    const totalLoss = todayTrades.reduce((sum, t) => sum + t.net_pnl, 0)
-    const currentDailyLoss = Math.max(-totalLoss, 0)
-
-    // Count consecutive losses from most recent
-    let streak = 0
-    for (let i = todayTrades.length - 1; i >= 0; i--) {
-      if (todayTrades[i].net_pnl < 0) {
-        streak++
-      } else {
-        break
-      }
-    }
-
-    return {
-      dailyLoss: currentDailyLoss,
-      consecutiveLosses: streak,
-    }
-  }, [todayTrades])
+export default function RiskRulesBars({ todayTrades, accounts, riskRules }: RiskRulesBarsProps) {
+  // One block per Apex account, each held to its own plan (lib/account-risk).
+  const groups = useMemo(
+    () => accountRiskGroups(todayTrades, accounts, riskRules).map((g) => ({ g, u: accountRiskUsage(g) })),
+    [todayTrades, accounts, riskRules],
+  )
 
   return (
     <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5">
       <h3 className="text-sm font-semibold text-gray-200 mb-4">Risk Rules</h3>
 
-      <div className="space-y-5">
-        <RuleBar
-          label="Daily Loss Limit"
-          current={dailyLoss}
-          max={riskRules.max_daily_loss}
-          format={formatCurrency}
-        />
-        <RuleBar
-          label="Consecutive Losses"
-          current={consecutiveLosses}
-          max={riskRules.max_consecutive_losses}
-          format={(v) => `${v} loss${v !== 1 ? 'es' : ''}`}
-        />
-      </div>
+      <div className="space-y-6">
+        {groups.map(({ g, u }) => {
+          const lossHit = u.dailyLoss >= g.dailyLossLimit
+          const losersHit = u.losers >= g.maxLosers
+          return (
+            <div key={g.key}>
+              {groups.length > 1 && (
+                <p className="text-xs font-semibold text-gray-400 mb-3">
+                  {g.label}
+                  <span className="font-normal text-gray-600">
+                    {g.fromPlan ? ' · trading plan' : ' · Settings limits — link these to an account'}
+                  </span>
+                </p>
+              )}
+              <div className="space-y-5">
+                <RuleBar
+                  label="Daily Loss Limit"
+                  current={u.dailyLoss}
+                  max={g.dailyLossLimit}
+                  format={formatCurrency}
+                />
+                <RuleBar
+                  label={g.losersMode === 'total' ? 'Losers Today' : 'Consecutive Losses'}
+                  current={u.losers}
+                  max={g.maxLosers}
+                  format={(v) => `${v} loss${v !== 1 ? 'es' : ''}`}
+                />
+              </div>
 
-      {/* Status indicator */}
-      <div className={cn(
-        'mt-4 px-3 py-2 rounded-lg text-xs font-medium',
-        dailyLoss >= riskRules.max_daily_loss || consecutiveLosses >= riskRules.max_consecutive_losses
-          ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-          : dailyLoss >= riskRules.max_daily_loss * 0.8
-          ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-      )}>
-        {dailyLoss >= riskRules.max_daily_loss
-          ? 'DAILY LOSS LIMIT HIT — Stop trading'
-          : consecutiveLosses >= riskRules.max_consecutive_losses
-          ? 'CONSECUTIVE LOSS LIMIT — Take a break'
-          : 'Risk rules OK — Trade with discipline'}
+              {/* Status indicator */}
+              <div className={cn(
+                'mt-4 px-3 py-2 rounded-lg text-xs font-medium',
+                lossHit || losersHit
+                  ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                  : u.dailyLoss >= g.dailyLossLimit * 0.8
+                  ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+              )}>
+                {lossHit
+                  ? 'DAILY LOSS LIMIT HIT — Stop trading'
+                  : losersHit
+                  ? g.losersMode === 'total'
+                    ? 'TWO LOSERS — Day is done'
+                    : 'CONSECUTIVE LOSS LIMIT — Take a break'
+                  : 'Risk rules OK — Trade with discipline'}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
