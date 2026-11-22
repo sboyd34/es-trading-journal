@@ -75,7 +75,7 @@ git push origin main       # triggers Vercel auto-deploy
 - `FINNHUB_API_KEY` — earnings calendar
 - `TRADOVATE_ENCRYPTION_KEY` — encrypts broker creds at rest
 - `JOURNAL_AUTO_SECRET` — auth gate for `/api/brief/auto-import`
-- `CRON_SECRET` — guards `/api/tradovate/cron`
+- `CRON_SECRET` — guards the cron routes (`/api/cron/weekly-review`, `/api/tradovate/cron`) and the weekly-review route's cron path
 
 Missing keys typically return empty arrays rather than 500s (e.g., `/api/news`, `/api/earnings/upcoming`). Silent fail.
 
@@ -85,7 +85,10 @@ It has wiped working configs before. Sensitive vars return empty and silently ov
 
 ## Cron jobs
 
-- `/api/tradovate/cron` — fires `30 14 * * 1-5` (14:30 UTC Mon-Fri = NY open). Pulls overnight fills.
+- `/api/cron/weekly-review` — fires `0 21 * * 5` (Fri 21:00 UTC = 15:00 CT). Generates the week's review if none exists yet.
+- `/api/tradovate/cron` — **deliberately unscheduled** (removed from `vercel.json` 2026-11-22). The accounts are prop-firm accounts that can't link via the API, trades arrive by CSV import, and API fill ids may not match CSV fill ids — so a scheduled sync risked double-importing every trade. The route still exists.
+
+Both cron routes authenticate with `CRON_SECRET` (set in Vercel production) and **fail closed** (500) in production if it is unset. They are on the middleware's explicit `SECRET_AUTH_API_PREFIXES` allowlist — Vercel cron sends a Bearer header and no session cookie, so without that entry the middleware 307s the run to `/login` and it silently never executes (which it did, every Friday, until 2026-11-22). A new cron route must be added to that list *and* fail closed on its own.
 
 ## API integration patterns
 
