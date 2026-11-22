@@ -1,3 +1,5 @@
+import { APEX_CONFIGS, TRADING_PLAN, type PlanSize } from '@/lib/apex-config'
+
 export const SYSTEM_SETUPS = [
   'A+ Confluence',
   'ORB Break',
@@ -44,6 +46,21 @@ Session Times (CT) — REFERENCE ONLY, NOT A RULE. The trader trades whenever th
 - Liquidity context: NY RTH (08:30–15:00) is usually deepest; the NY lunch (11:00–12:30) is often thin and choppy; other extended hours have thinner liquidity, wider stops, and more fakeouts.
 `.trim()
 
+// The risk plan as AI prompts see it, generated from TRADING_PLAN so the
+// coaching can never disagree with the position sizer or the Framework page.
+const planLine = (label: string, size: PlanSize) => {
+  const p = TRADING_PLAN[size]
+  return `- ${label} (trailing drawdown $${APEX_CONFIGS[size].trailingDrawdown.toLocaleString()}, intraday, counts open profit): risk $${p.riskPerTrade.min}–$${p.riskPerTrade.max}/trade at 1:${p.rewardRisk}; HARD daily stop -$${p.dailyLossHard} (two losers, done); daily profit target +$${p.dailyProfitTarget.min}–$${p.dailyProfitTarget.max}, then stop; move stop to breakeven once up ~$${p.breakevenAt}`
+}
+export const RISK_PLAN_POLICY = `
+Apex Legacy Risk Plan (eval and PA until the trail locks — sized against the drawdown buffer):
+${planLine('50K', 50000)}
+${planLine('25K', 25000)}
+- Fixed profit targets, no runners — the trail counts unrealized gains, so a winner that comes back raises the floor
+- Never increase size to catch up after a red day; never trade past either daily limit; no re-entries after a max-loss morning
+- Post-loss day: trade half base size for the session
+`.trim()
+
 export const TRADING_SYSTEM_PROMPT = `
 TRADING SYSTEM RULES (evaluate ALL trades against these — be specific, not generic):
 
@@ -83,10 +100,7 @@ A grade: 1H bias clear and aligned, correct setup from priority list, approved l
 B grade: One minor deviation — slightly early entry, Tier 2 location without extra confirmation candle, or small size adjustment
 C grade: ANY of these: POC/mid-value/chop entry, no bias or wrong direction vs bias, chased extended candle, entered on bubble/fire alone, FOMO or revenge state, blind-touch trade
 
-Apex 50K Risk Framework:
-- Evaluation: hard stop -$250, soft stop -$150, default risk $100/trade (base 1 ES or 2 MES)
-- PA: hard stop -$150, soft stop -$120, default risk $40–80/trade (base 2 MES; 1 ES on A+ only)
-- Post-loss day: automatically trade half base size for the session
+${RISK_PLAN_POLICY}
 
 1-Minute Refinement Rule:
 - Only after 5m proven break with real close (not wick)

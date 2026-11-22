@@ -67,7 +67,7 @@ export default function EvalPage() {
   const [startingEquity,   setStartingEquity]   = useState<number | null>(null)
   const [profitTarget,     setProfitTarget]      = useState<number | null>(null)
   const [trailingDrawdown, setTrailingDrawdown]  = useState<number | null>(null)
-  const [riskPerTrade,     setRiskPerTrade]      = useState(500)
+  const [riskPerTrade,     setRiskPerTrade]      = useState(125) // 50K plan max per-trade risk
   const [tradesPerDay,     setTradesPerDay]      = useState(2.5)
   const [currentEquity,    setCurrentEquity]     = useState<number | null>(null)
   const [currentThreshold, setCurrentThreshold]  = useState<number | null>(null)

@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { Trade, DailySession } from '@/types'
-import { SESSION_TIME_POLICY } from '@/lib/trading-system'
+import { RISK_PLAN_POLICY, SESSION_TIME_POLICY } from '@/lib/trading-system'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -248,7 +248,7 @@ BANNED Locations: POC, mid-value, overlapping candles, obvious chop.
 
 Hard Rule: Bias.Setup.Trigger.Location.Risk — all five before every trade.
 Grade: A=all criteria met; B=one minor deviation; C=any rule violation.
-Risk: Apex evaluation hard -$250/soft -$150; PA hard -$150/soft -$120; post-loss day = half base size.
+${RISK_PLAN_POLICY}
 
 Return ONLY valid JSON with this exact structure:
 {

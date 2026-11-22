@@ -4,9 +4,11 @@ import { AlertTriangle } from 'lucide-react'
 
 /**
  * Static reference card for the MES bracket-order configuration.
- * Source: Trading_Journal_ES_MES.docx §1.2 (verbatim).
+ * Source: trading_plan_apex_50k.pdf — risk $60–75 (25K) / $100–125 (50K) per
+ * trade at 1:2, fixed targets with no runners, breakeven at ~$100 / ~$150.
+ * Contract counts keep the 8-tick stop and scale size to the plan's risk band.
  *
- * Spec: docs/superpowers/specs/2026-05-26-bracket-spec-card-design.md
+ * Original spec: docs/superpowers/specs/2026-05-26-bracket-spec-card-design.md
  *
  * Hardcoded constants — discipline parameters should change via code
  * review, not a settings UI (same principle as THE_15_RULES in
@@ -30,26 +32,28 @@ interface BracketSpec {
   totalWin: string
 }
 
+// 7 MES × 8 ticks × $1.25 = $70 risk (plan band $60–75); 16 ticks = $140 (1:2).
+// Breakeven at +12 ticks = $105 (plan: ~$100+).
 const BRACKET_SPECS_25K: BracketSpec = {
   accountSize: '25K',
-  totalContracts: '2 MES total',
+  totalContracts: '7 MES total',
   legs: [
-    { name: 'Leg 1', contracts: '1 MES', tp: '+8 ticks', sl: '−8 ticks', risk: '$10', win: '$10' },
-    { name: 'Leg 2 (runner)', contracts: '1 MES', tp: '+16 ticks', sl: '−8 ticks → BE on TP1', risk: '$10', win: '$20' },
+    { name: 'Single target', contracts: '7 MES', tp: '+16 ticks', sl: '−8 ticks → BE at +12t', risk: '$70', win: '$140' },
   ],
-  totalRisk: '$20 max',
-  totalWin: '$30 max',
+  totalRisk: '$70 max',
+  totalWin: '$140 max',
 }
 
+// 12 MES × 8 ticks × $1.25 = $120 risk (plan band $100–125); 16 ticks = $240 (1:2).
+// Breakeven at +10 ticks = $150 (plan: ~$150+).
 const BRACKET_SPECS_50K: BracketSpec = {
   accountSize: '50K',
-  totalContracts: '4 MES total',
+  totalContracts: '12 MES total',
   legs: [
-    { name: 'Leg 1', contracts: '2 MES', tp: '+8 ticks', sl: '−8 ticks', risk: '$20', win: '$20' },
-    { name: 'Leg 2 (runner)', contracts: '2 MES', tp: '+16 ticks', sl: '−8 ticks → BE on TP1', risk: '$20', win: '$40' },
+    { name: 'Single target', contracts: '12 MES', tp: '+16 ticks', sl: '−8 ticks → BE at +10t', risk: '$120', win: '$240' },
   ],
-  totalRisk: '$40 max',
-  totalWin: '$60 max',
+  totalRisk: '$120 max',
+  totalWin: '$240 max',
 }
 
 function BracketTable({ spec }: { spec: BracketSpec }) {
@@ -120,12 +124,13 @@ export default function BracketSpecCard() {
       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 flex items-start gap-3">
         <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
         <p className="text-sm text-amber-200 leading-relaxed">
-          <span className="font-semibold">ES is OFF-LIMITS</span> at both
-          account sizes. Tick size ($12.50) makes a proper 8-tick stop ={' '}
-          <span className="font-mono">$100/contract</span> — 5× per-trade risk
-          on 25K, 2.5× on 50K. Switch to ES only after a funded account has
-          built a <span className="font-mono">$750+</span> buffer above the
-          locked drawdown.
+          <span className="font-semibold">ES is OFF-LIMITS</span> until a
+          funded account has built a <span className="font-mono">$750+</span>{' '}
+          buffer above the locked drawdown. An 8-tick ES stop is{' '}
+          <span className="font-mono">$100/contract</span> — over the 25K&apos;s
+          $75 max risk. On the 50K it fits the $100–$125 band, so there it is a
+          discipline rule, not a sizing one. No runners: the trail counts open
+          profit.
         </p>
       </div>
     </section>

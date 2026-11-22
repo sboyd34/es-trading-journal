@@ -2,6 +2,8 @@ import { ScrollText, AlertTriangle, Lightbulb, ShieldCheck } from 'lucide-react'
 
 // Static reference page — the Apex Trader Funding Unified Trading Framework.
 // Single source of truth for 25K and 50K account rules (Eval & PA identical).
+// Risk numbers follow trading_plan_apex_50k.pdf (Apex LEGACY evals) and mirror
+// TRADING_PLAN in lib/apex-config.ts — change both together.
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -108,7 +110,10 @@ function KillSwitch({ rules }: { rules: string[] }) {
 const KILL_SWITCH_BASE = (target: string, loss: string) => [
   `Hit ${target} profit → stop trading, day is done`,
   `Hit ${loss} loss → stop trading, day is done`,
-  '3 consecutive losses → stop trading, day is done',
+  'Two losers → stop trading, day is done (that is the daily max)',
+  'No re-entries after a max-loss morning — walk away',
+  'Never increase size to catch up after a red day',
+  'Take profit at the fixed target — no runners (the trail counts open profit)',
   '10-minute mandatory cooldown after every loss',
   'No trades during FOMC, CPI, NFP or any major scheduled news events',
   'Never widen a stop loss — ever',
@@ -147,13 +152,15 @@ export default function FrameworkPage() {
             <KVTable
               rows={[
                 ['Account Size', '$25,000'],
-                ['Trailing Drawdown Limit', '$500'],
+                ['Trailing Drawdown (legacy, intraday — counts open profit)', '$1,500'],
                 ['Eval Profit Target', '$1,500'],
-                ['PA Safety Net (min balance floor)', '$26,100'],
+                ['Eval Minimum Trading Days', '7'],
+                ['Apex Daily Loss Limit', 'None — yours is the only one'],
+                ['PA Trail Locks At (start + $100)', '$25,100'],
                 ['PA Min Balance to Request Payout', '$26,600'],
                 ['PA Profit Needed Before First Payout', '$1,600'],
                 ['PA Qualifying Days', '5 days @ $100 min (non-consecutive ok)'],
-                ['50% Consistency Rule', 'No single day ≥ 50% of total profit'],
+                ['30% Consistency Rule (legacy PA)', 'No single day ≥ 30% of profit since last payout'],
                 ['Max Payouts Per PA', '6'],
                 ['Min Payout Amount', '$500'],
                 ['Max Payout Per Request', '$1,000'],
@@ -165,7 +172,9 @@ export default function FrameworkPage() {
             <SectionCard title="Position Structure">
               <KVTable
                 rows={[
-                  ['Default (always)', '/MES — 2 contracts'],
+                  ['Per-Trade Risk (1:2 reward)', '$60–$75'],
+                  ['Default (always)', '/MES — 7 contracts ($70 at 8 ticks)'],
+                  ['Breakeven Trigger', 'Trade up ~$100+'],
                   ['All 3 ES conditions met', '/ES — 1 contract'],
                 ]}
               />
@@ -192,21 +201,22 @@ export default function FrameworkPage() {
           <SectionCard title="Bracket Order Specifications">
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">/MES</p>
             <BracketTable
-              cols={['Leg 1', 'Leg 2', 'Total']}
+              cols={['Single target — no runners']}
               rows={[
-                { label: 'Contracts', values: ['1 MES', '1 MES', '2 MES'] },
-                { label: 'Profit Target', values: ['+8t ($10)', '+16t ($20)', '$30 max'] },
-                { label: 'Stop Loss', values: ['-8t (-$10)', '-8t (-$10)', '-$20 max'] },
-                { label: 'Breakeven', values: ['—', 'Move to BE when Leg 1 fills', ''], muted: true },
+                { label: 'Contracts', values: ['7 MES'] },
+                { label: 'Profit Target', values: ['+16t ($140)'] },
+                { label: 'Stop Loss', values: ['-8t (-$70)'] },
+                { label: 'Breakeven', values: ['Move to BE at +12t ($105)'], muted: true },
               ]}
             />
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-4 mb-2">/ES (if authorized)</p>
             <BracketTable
-              cols={['Leg 1', 'Leg 2', 'Total']}
+              cols={['Single target — no runners']}
               rows={[
-                { label: 'Contracts', values: ['1 ES', '1 ES', '1 ES'] },
-                { label: 'Profit Target', values: ['+8t ($100)', '+16t ($200)', '$300 max'] },
-                { label: 'Stop Loss', values: ['-8t (-$100)', '-8t (-$100)', '-$200 max'] },
+                { label: 'Contracts', values: ['1 ES'] },
+                { label: 'Profit Target', values: ['+16t ($200)'] },
+                { label: 'Stop Loss', values: ['-8t (-$100)'] },
+                { label: 'Breakeven', values: ['Move to BE at +12t ($150)'], muted: true },
               ]}
             />
             <div className="mt-4">
@@ -220,16 +230,16 @@ export default function FrameworkPage() {
             <SectionCard title="Daily Limits">
               <KVTable
                 rows={[
-                  ['Daily Profit Target — STOP when hit', '+$100'],
-                  ['Daily Max Loss — STOP when hit', '-$100'],
-                  ['Consecutive Loss Limit', '3 in a row = done'],
+                  ['Daily Profit Target — STOP when hit', '+$180–$225'],
+                  ['Daily Max Loss (HARD) — STOP when hit', '-$150'],
+                  ['Loss Limit', 'Two losers = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
               />
             </SectionCard>
             <SectionCard title="Session Structure">
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-                Daily max loss and profit target cover BOTH sessions. Hitting -$100 at 2AM ends your entire trading
+                Daily max loss and profit target cover BOTH sessions. Hitting -$150 at 2AM ends your entire trading
                 day — RTH does not reset it.
               </p>
             </SectionCard>
@@ -238,7 +248,7 @@ export default function FrameworkPage() {
 
         <div className="mt-4">
           <SectionCard title="Kill Switch Rules — No Exceptions">
-            <KillSwitch rules={KILL_SWITCH_BASE('+$100', '-$100')} />
+            <KillSwitch rules={KILL_SWITCH_BASE('+$180–$225', '-$150')} />
           </SectionCard>
         </div>
 
@@ -264,13 +274,15 @@ export default function FrameworkPage() {
             <KVTable
               rows={[
                 ['Account Size', '$50,000'],
-                ['Trailing Drawdown Limit', '$1,000'],
+                ['Trailing Drawdown (legacy, intraday — counts open profit)', '$2,500'],
                 ['Eval Profit Target', '$3,000'],
-                ['PA Safety Net (min balance floor)', '$52,100'],
+                ['Eval Minimum Trading Days', 'None'],
+                ['Apex Daily Loss Limit', 'None — yours is the only one'],
+                ['PA Trail Locks At (start + $100)', '$50,100'],
                 ['PA Min Balance to Request Payout', '$52,600'],
                 ['PA Profit Needed Before First Payout', '$2,600'],
                 ['PA Qualifying Days', '5 days @ $200 min (non-consecutive ok)'],
-                ['50% Consistency Rule', 'No single day ≥ 50% of total profit'],
+                ['30% Consistency Rule (legacy PA)', 'No single day ≥ 30% of profit since last payout'],
                 ['Max Payouts Per PA', '6'],
                 ['Min Payout Amount', '$500'],
               ]}
@@ -281,7 +293,9 @@ export default function FrameworkPage() {
             <SectionCard title="Position Structure">
               <KVTable
                 rows={[
-                  ['Default (always)', '/MES — 4 contracts'],
+                  ['Per-Trade Risk (1:2 reward)', '$100–$125'],
+                  ['Default (always)', '/MES — 12 contracts ($120 at 8 ticks)'],
+                  ['Breakeven Trigger', 'Trade up ~$150+'],
                   ['All 3 ES conditions met', '/ES — 1 contract'],
                 ]}
               />
@@ -308,21 +322,22 @@ export default function FrameworkPage() {
           <SectionCard title="Bracket Order Specifications">
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">/MES</p>
             <BracketTable
-              cols={['Leg 1', 'Leg 2', 'Total']}
+              cols={['Single target — no runners']}
               rows={[
-                { label: 'Contracts', values: ['2 MES', '2 MES', '4 MES'] },
-                { label: 'Profit Target', values: ['+8t ($20)', '+16t ($40)', '$60 max'] },
-                { label: 'Stop Loss', values: ['-8t (-$20)', '-8t (-$20)', '-$40 max'] },
-                { label: 'Breakeven', values: ['—', 'Move to BE when Leg 1 fills', ''], muted: true },
+                { label: 'Contracts', values: ['12 MES'] },
+                { label: 'Profit Target', values: ['+16t ($240)'] },
+                { label: 'Stop Loss', values: ['-8t (-$120)'] },
+                { label: 'Breakeven', values: ['Move to BE at +10t ($150)'], muted: true },
               ]}
             />
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-4 mb-2">/ES (if authorized)</p>
             <BracketTable
-              cols={['Leg 1', 'Leg 2', 'Total']}
+              cols={['Single target — no runners']}
               rows={[
-                { label: 'Contracts', values: ['1 ES', '1 ES', '1 ES'] },
-                { label: 'Profit Target', values: ['+8t ($100)', '+16t ($200)', '$300 max'] },
-                { label: 'Stop Loss', values: ['-8t (-$100)', '-8t (-$100)', '-$200 max'] },
+                { label: 'Contracts', values: ['1 ES'] },
+                { label: 'Profit Target', values: ['+16t ($200)'] },
+                { label: 'Stop Loss', values: ['-8t (-$100)'] },
+                { label: 'Breakeven', values: ['Move to BE at +12t ($150)'], muted: true },
               ]}
             />
             <div className="mt-4">
@@ -336,16 +351,16 @@ export default function FrameworkPage() {
             <SectionCard title="Daily Limits">
               <KVTable
                 rows={[
-                  ['Daily Profit Target — STOP when hit', '+$200'],
-                  ['Daily Max Loss — STOP when hit', '-$200'],
-                  ['Consecutive Loss Limit', '3 in a row = done'],
+                  ['Daily Profit Target — STOP when hit', '+$300–$375'],
+                  ['Daily Max Loss (HARD) — STOP when hit', '-$250'],
+                  ['Loss Limit', 'Two losers = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
               />
             </SectionCard>
             <SectionCard title="Session Structure">
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-                Daily max loss and profit target cover BOTH sessions. Hitting -$200 at 2AM ends your entire trading
+                Daily max loss and profit target cover BOTH sessions. Hitting -$250 at 2AM ends your entire trading
                 day — RTH does not reset it.
               </p>
             </SectionCard>
@@ -354,7 +369,7 @@ export default function FrameworkPage() {
 
         <div className="mt-4">
           <SectionCard title="Kill Switch Rules — No Exceptions">
-            <KillSwitch rules={KILL_SWITCH_BASE('+$200', '-$200')} />
+            <KillSwitch rules={KILL_SWITCH_BASE('+$300–$375', '-$250')} />
           </SectionCard>
         </div>
 
@@ -384,25 +399,28 @@ export default function FrameworkPage() {
           <BracketTable
             cols={['25K', '50K']}
             rows={[
-              { label: 'Trailing Drawdown', values: ['$500', '$1,000'] },
+              { label: 'Trailing Drawdown (legacy, intraday)', values: ['$1,500', '$2,500'] },
               { label: 'Eval Profit Target', values: ['$1,500', '$3,000'] },
-              { label: 'PA Safety Net', values: ['$26,100', '$52,100'] },
+              { label: 'Eval Minimum Trading Days', values: ['7', 'None'] },
+              { label: 'Per-Trade Risk (1:2)', values: ['$60–$75', '$100–$125'] },
+              { label: 'Breakeven Trigger', values: ['~$100', '~$150'] },
+              { label: 'PA Trail Locks At', values: ['$25,100', '$50,100'] },
               { label: 'Min Balance for Payout', values: ['$26,600', '$52,600'] },
               { label: 'Profit Before First Payout', values: ['$1,600', '$2,600'] },
               { label: 'Qualifying Days', values: ['5 @ $100', '5 @ $200'] },
-              { label: 'Daily Profit Target', values: ['$100', '$200'] },
-              { label: 'Daily Max Loss', values: ['-$100', '-$200'] },
-              { label: 'Default Instrument', values: ['/MES — 2', '/MES — 4'] },
+              { label: 'Daily Profit Target', values: ['$180–$225', '$300–$375'] },
+              { label: 'Daily Max Loss (HARD)', values: ['-$150', '-$250'] },
+              { label: 'Default Instrument', values: ['/MES — 7', '/MES — 12'] },
               { label: '/ES Contracts (if authorized)', values: ['1', '1'] },
               { label: '/ES Available During Eval?', values: ['NO', 'YES'] },
               { label: '/ES Buffer Required', values: ['$1,500+', '$500+'] },
               { label: '/ES ATR Requirement', values: ['Under 6', 'Under 6'] },
-              { label: 'Consecutive Loss Limit', values: ['3 = done', '3 = done'] },
+              { label: 'Loss Limit', values: ['2 losers = done', '2 losers = done'] },
               { label: 'Cooldown After Loss', values: ['10 min', '10 min'] },
               { label: 'Max Payouts Per PA', values: ['6', '6'] },
               { label: 'Max Per Payout (Cycle 1)', values: ['$1,000', '$1,500'] },
               { label: 'Max Total From One PA', values: ['$6,000', '$15,500'] },
-              { label: '50% Consistency Rule', values: ['Yes', 'Yes'] },
+              { label: '30% Consistency Rule (legacy PA)', values: ['Yes', 'Yes'] },
             ]}
           />
         </SectionCard>

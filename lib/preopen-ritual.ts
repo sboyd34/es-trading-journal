@@ -17,7 +17,7 @@ export const THE_15_RULES: readonly string[] = [
   'Scale out at TP1 — always. The 50% off at 1R turns greedy holds into free trades on the runner.',
   'Hit the daily profit target → platform CLOSED. Not minimized, not "one more." Closed.',
   'Hit the max daily loss → platform CLOSED. The next trade is always the worst trade. Stop.',
-  '3 losses in a row → STOP for the day, even if I haven’t hit max loss. My read is wrong today.',
+  'Two losers → STOP for the day. That is my max loss — no re-entries after a max-loss morning.',
   'Mandatory 10-minute cooldown after any loss. Stand up, walk away. No re-entry inside 10 minutes.',
   'Position size is locked at session start. No sizing up mid-session, even on a heater.',
   'Two-strike rule on setups: if the same setup fails twice in a row, skip it for the day.',

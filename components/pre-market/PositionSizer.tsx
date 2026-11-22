@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { APEX_CONFIGS, ACCOUNT_SIZES, RISK_RULES, type AccountSize } from '@/lib/apex-config'
+import { APEX_CONFIGS, ACCOUNT_SIZES, planFor, type AccountSize } from '@/lib/apex-config'
 import { POINT_VALUES } from '@/lib/instruments'
 import type { ApexAccount } from '@/types'
 
@@ -64,23 +64,24 @@ export default function PositionSizer() {
     if (selectedAccount) {
       const size = selectedAccount.account_size as AccountSize
       const cfg = APEX_CONFIGS[size] ?? APEX_CONFIGS[50000]
-      const rules = RISK_RULES[selectedAccount.mode]
+      // Per-trade risk band from the trading plan. Eval and PA phase 1 share it.
+      const risk = planFor(size).riskPerTrade
       return {
         accountSize: size,
         mode: selectedAccount.mode,
         maxContracts: cfg.maxContracts,
-        softStop: rules.softStop,
-        hardStop: rules.hardStop,
+        softStop: risk.min,
+        hardStop: risk.max,
       }
     }
     const cfg = APEX_CONFIGS[manualSize]
-    const rules = RISK_RULES[manualMode]
+    const risk = planFor(manualSize).riskPerTrade
     return {
       accountSize: manualSize,
       mode: manualMode,
       maxContracts: cfg.maxContracts,
-      softStop: rules.softStop,
-      hardStop: rules.hardStop,
+      softStop: risk.min,
+      hardStop: risk.max,
     }
   }, [selectedAccount, manualSize, manualMode])
 
@@ -92,14 +93,16 @@ export default function PositionSizer() {
     if (stopPoints === 0) return null
     const pointValue = POINT_VALUES[instrument] ?? 50
     const riskPerContract = stopPoints * pointValue
-    const softContracts = Math.min(maxContracts, Math.floor(softStop / riskPerContract))
-    const hardContracts = Math.min(maxContracts, Math.floor(hardStop / riskPerContract))
+    // maxContracts is in minis; Apex counts 10 micros per mini.
+    const cap = instrument === 'MES' || instrument === 'MNQ' ? maxContracts * 10 : maxContracts
+    const softContracts = Math.min(cap, Math.floor(softStop / riskPerContract))
+    const hardContracts = Math.min(cap, Math.floor(hardStop / riskPerContract))
     return {
       stopPoints,
       riskPerContract,
       softContracts,
       hardContracts,
-      maxContracts,
+      maxContracts: cap,
       totalRiskSoft: softContracts * riskPerContract,
       softStop,
       hardStop,
@@ -251,20 +254,20 @@ export default function PositionSizer() {
                   'text-sm font-semibold',
                   result.softContracts === result.maxContracts ? 'text-amber-400' : 'text-emerald-400'
                 )}>
-                  Soft stop (${result.softStop}) → {result.softContracts} {instrument}
+                  Base risk (${result.softStop}) → {result.softContracts} {instrument}
                   <span className="text-xs font-normal text-gray-500 ml-1">(max {result.maxContracts})</span>
                 </p>
               )}
 
               {!result.tooWide && (
                 <p className="text-xs text-gray-500">
-                  Hard stop (${result.hardStop}) → {result.hardContracts} {instrument}
+                  Max risk (${result.hardStop}) → {result.hardContracts} {instrument}
                 </p>
               )}
 
               {!result.tooWide && (
                 <p className="text-xs text-gray-400">
-                  Total risk (soft):{' '}
+                  Total risk (base):{' '}
                   <span className="text-gray-200 font-medium">${result.totalRiskSoft.toFixed(2)}</span>
                 </p>
               )}

@@ -9,10 +9,12 @@ import {
   BOOTSTRAP_INNER_SIMS,
   type Adequacy,
 } from '@/lib/eval-uncertainty'
-import { APEX_CONFIGS, type AccountSize } from '@/lib/apex-config'
+import { APEX_CONFIGS, planFor, type AccountSize } from '@/lib/apex-config'
 import { buildRSamples, type RSample, type SampleTrade } from '@/lib/eval-samples'
 
-const COMPARISON_RISKS = [250, 500, 750, 1000]
+// The plan's max per-trade risk on the 25K ($75) and 50K ($125), then 2x and
+// 4x the 50K figure for contrast (trading_plan_apex_50k.pdf).
+const COMPARISON_RISKS = [75, 125, 250, 500]
 // Sampled trading days for the fan chart (25 checkpoints over 120 days)
 const FAN_DAYS = [
   0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
@@ -272,7 +274,7 @@ export async function POST(request: NextRequest) {
       startingEquity:   body.startingEquity   ?? dfltStartingEquity,
       profitTarget:     body.profitTarget     ?? cfg.profitTarget,
       trailingDrawdown: body.trailingDrawdown ?? cfg.trailingDrawdown,
-      riskPerTrade:     body.riskPerTrade     ?? 500,
+      riskPerTrade:     body.riskPerTrade     ?? planFor(acctSize).riskPerTrade.max,
       tradesPerDay:     body.tradesPerDay     ?? 2.5,
       currentEquity:    body.currentEquity    ?? dfltCurrentEquity,
       currentThreshold: body.currentThreshold ?? dfltCurrentThreshold,

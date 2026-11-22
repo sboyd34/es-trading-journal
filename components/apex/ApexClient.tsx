@@ -30,6 +30,10 @@ import { APEX_CONFIGS, ACCOUNT_SIZES, type AccountSize } from '@/lib/apex-config
 
 const ACTIVE_ACCOUNT_KEY = 'apex.activeAccountId'
 
+// Legacy PA consistency rule: no single day may be ≥ 30% of profit since the
+// last payout (trading_plan_apex_50k.pdf; Apex 4.0 accounts use 50%).
+const CONSISTENCY_LIMIT_PCT = 30
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function ProgressBar({ value, max, color }: { value: number; max: number; color: 'green' | 'amber' | 'red' }) {
@@ -1097,19 +1101,20 @@ export default function ApexClient({ userId, initialAccounts, initialTrades, tab
                 )}
               </SectionCard>
 
-              {/* 2. 50% consistency rule */}
+              {/* 2. Consistency rule — legacy PA: no single day ≥ 30% of profit
+                  since the last payout (trading_plan_apex_50k.pdf). Amber at 80%. */}
               <SectionCard className={cn(
-                tradeStats.consistencyPct > 50 ? 'border-red-500/40 bg-red-500/5' : '',
+                tradeStats.consistencyPct > CONSISTENCY_LIMIT_PCT ? 'border-red-500/40 bg-red-500/5' : '',
               )}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="h-4 w-4 text-gray-400" />
-                    <p className="text-sm font-semibold text-gray-200">50% Consistency Rule</p>
+                    <p className="text-sm font-semibold text-gray-200">{CONSISTENCY_LIMIT_PCT}% Consistency Rule</p>
                   </div>
                   <p className={cn(
                     'text-sm font-bold',
-                    tradeStats.consistencyPct > 50 ? 'text-red-400' :
-                    tradeStats.consistencyPct > 40 ? 'text-amber-400' : 'text-emerald-400',
+                    tradeStats.consistencyPct > CONSISTENCY_LIMIT_PCT ? 'text-red-400' :
+                    tradeStats.consistencyPct > CONSISTENCY_LIMIT_PCT * 0.8 ? 'text-amber-400' : 'text-emerald-400',
                   )}>
                     {tradeStats.consistencyPct.toFixed(1)}%
                   </p>
@@ -1117,7 +1122,7 @@ export default function ApexClient({ userId, initialAccounts, initialTrades, tab
                 <ProgressBar
                   value={tradeStats.consistencyPct}
                   max={100}
-                  color={tradeStats.consistencyPct > 50 ? 'red' : tradeStats.consistencyPct > 40 ? 'amber' : 'green'}
+                  color={tradeStats.consistencyPct > CONSISTENCY_LIMIT_PCT ? 'red' : tradeStats.consistencyPct > CONSISTENCY_LIMIT_PCT * 0.8 ? 'amber' : 'green'}
                 />
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>
@@ -1126,17 +1131,17 @@ export default function ApexClient({ userId, initialAccounts, initialTrades, tab
                   </span>
                   <span>Total: {formatCurrency(tradeStats.totalPnL)}</span>
                 </div>
-                {tradeStats.consistencyPct > 50 && (
+                {tradeStats.consistencyPct > CONSISTENCY_LIMIT_PCT && (
                   <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                     <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" />
                     <p className="text-xs text-red-300">
-                      Best day exceeds 50% of total profit. Payout will be denied — need more qualifying sessions.
+                      Best day exceeds {CONSISTENCY_LIMIT_PCT}% of total profit. Payout will be denied — need more qualifying sessions.
                     </p>
                   </div>
                 )}
                 <p className="text-[11px] text-gray-600 flex items-center gap-1">
                   <Info className="h-3 w-3 shrink-0" />
-                  This rule is checked at payout request time only. No single day &gt; 50% of total profit.
+                  This rule is checked at payout request time only. No single day &gt; {CONSISTENCY_LIMIT_PCT}% of total profit.
                 </p>
               </SectionCard>
 
