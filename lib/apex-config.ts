@@ -32,6 +32,9 @@ export const TRADING_PLAN = {
     breakevenAt: 100,                   // move stop to BE once a trade is up ~this much
     minTradingDays: 7,
     paTrailLocksAt: 25100,
+    // 1 ES at the 8-tick stop = $100 — over the $75 max, so only once the PA
+    // trail has locked with $1,500+ above it (Framework /ES Authorization).
+    es: { allowed: 'pa-phase-2', maxContracts: 1 },
   },
   50000: {
     riskPerTrade: { min: 100, max: 125 },
@@ -42,6 +45,9 @@ export const TRADING_PLAN = {
     breakevenAt: 150,
     minTradingDays: 0,
     paTrailLocksAt: 50100,
+    // 1 ES at the 8-tick stop = $100 — inside the $100–$125 band. Eval or PA,
+    // ATR under 6 (Framework /ES Authorization).
+    es: { allowed: 'yes', maxContracts: 1 },
   },
 } as const
 

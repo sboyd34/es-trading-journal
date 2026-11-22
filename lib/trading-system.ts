@@ -50,7 +50,7 @@ Session Times (CT) — REFERENCE ONLY, NOT A RULE. The trader trades whenever th
 // coaching can never disagree with the position sizer or the Framework page.
 const planLine = (label: string, size: PlanSize) => {
   const p = TRADING_PLAN[size]
-  return `- ${label} (trailing drawdown $${APEX_CONFIGS[size].trailingDrawdown.toLocaleString()}, intraday, counts open profit): risk $${p.riskPerTrade.min}–$${p.riskPerTrade.max}/trade at 1:${p.rewardRisk}; HARD daily stop -$${p.dailyLossHard} (two losers, done); daily profit target +$${p.dailyProfitTarget.min}–$${p.dailyProfitTarget.max}, then stop; move stop to breakeven once up ~$${p.breakevenAt}`
+  return `- ${label} (trailing drawdown $${APEX_CONFIGS[size].trailingDrawdown.toLocaleString()}, intraday, counts open profit): risk $${p.riskPerTrade.min}–$${p.riskPerTrade.max}/trade at 1:${p.rewardRisk}; HARD daily stop -$${p.dailyLossHard} (two losers, done); daily profit target +$${p.dailyProfitTarget.min}–$${p.dailyProfitTarget.max}, then stop; move stop to breakeven once up ~$${p.breakevenAt}; /ES: ${p.es.allowed === 'yes' ? `max ${p.es.maxContracts} contract (8-tick stop = $100), ATR under 6` : `NOT allowed in the eval (1 ES at 8 ticks = $100 > $${p.riskPerTrade.max} max) — only in PA phase 2 after the trail locks`}`
 }
 export const RISK_PLAN_POLICY = `
 Apex Legacy Risk Plan (eval and PA until the trail locks — sized against the drawdown buffer):

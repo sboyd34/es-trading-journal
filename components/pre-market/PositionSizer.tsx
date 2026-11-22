@@ -20,6 +20,66 @@ type SizerResult = {
   softStop: number
   hardStop: number
   tooWide: boolean
+  // ES is governed by the plan's /ES rule, not just by dollars.
+  esBlocked: string | null
+  esNote: string | null
+}
+
+// Pure sizing math, kept outside the component so it can be exercised directly.
+export function computeSizing(p: {
+  entryPrice: string
+  stopPrice: string
+  instrument: Instrument
+  accountSize: AccountSize
+  mode: 'evaluation' | 'pa'
+  softStop: number
+  hardStop: number
+  maxContracts: number
+}): SizerResult | null {
+  const { instrument, accountSize, mode, softStop, hardStop, maxContracts } = p
+  const entry = parseFloat(p.entryPrice)
+  const stop = parseFloat(p.stopPrice)
+  if (isNaN(entry) || isNaN(stop)) return null
+  const stopPoints = Math.abs(entry - stop)
+  if (stopPoints === 0) return null
+  const pointValue = POINT_VALUES[instrument] ?? 50
+  const riskPerContract = stopPoints * pointValue
+  // maxContracts is in minis; Apex counts 10 micros per mini.
+  let cap = instrument === 'MES' || instrument === 'MNQ' ? maxContracts * 10 : maxContracts
+
+  // /ES rule from the plan: 1 contract on the 50K (eval or PA); on the 25K
+  // only in PA phase 2. A tight stop must not talk the sizer past it.
+  let esBlocked: string | null = null
+  let esNote: string | null = null
+  if (instrument === 'ES') {
+    const plan = planFor(accountSize)
+    cap = Math.min(cap, plan.es.maxContracts)
+    if (plan.es.allowed === 'pa-phase-2' && mode === 'evaluation') {
+      esBlocked = `No /ES on the ${accountSize / 1000}K eval — 1 ES at 8 ticks risks $100, over the $${hardStop} max. Use MES.`
+    } else if (plan.es.allowed === 'pa-phase-2') {
+      esNote = `PA phase 2 only — trail locked at $${plan.paTrailLocksAt.toLocaleString()} with $1,500+ above it. ATR under 6.`
+    } else {
+      esNote = 'Max 1 ES. ATR under 6 — else MES.'
+    }
+  }
+
+  const softContracts = esBlocked ? 0 : Math.min(cap, Math.floor(softStop / riskPerContract))
+  const hardContracts = esBlocked ? 0 : Math.min(cap, Math.floor(hardStop / riskPerContract))
+  return {
+    stopPoints,
+    riskPerContract,
+    softContracts,
+    hardContracts,
+    maxContracts: cap,
+    totalRiskSoft: softContracts * riskPerContract,
+    softStop,
+    hardStop,
+    // The plan's band runs base → max, so a stop is only "too wide" when
+    // even the max risk can't afford one contract.
+    tooWide: hardContracts === 0,
+    esBlocked,
+    esNote,
+  }
 }
 
 export default function PositionSizer() {
@@ -85,30 +145,10 @@ export default function PositionSizer() {
     }
   }, [selectedAccount, manualSize, manualMode])
 
-  const result = useMemo((): SizerResult | null => {
-    const entry = parseFloat(entryPrice)
-    const stop = parseFloat(stopPrice)
-    if (isNaN(entry) || isNaN(stop)) return null
-    const stopPoints = Math.abs(entry - stop)
-    if (stopPoints === 0) return null
-    const pointValue = POINT_VALUES[instrument] ?? 50
-    const riskPerContract = stopPoints * pointValue
-    // maxContracts is in minis; Apex counts 10 micros per mini.
-    const cap = instrument === 'MES' || instrument === 'MNQ' ? maxContracts * 10 : maxContracts
-    const softContracts = Math.min(cap, Math.floor(softStop / riskPerContract))
-    const hardContracts = Math.min(cap, Math.floor(hardStop / riskPerContract))
-    return {
-      stopPoints,
-      riskPerContract,
-      softContracts,
-      hardContracts,
-      maxContracts: cap,
-      totalRiskSoft: softContracts * riskPerContract,
-      softStop,
-      hardStop,
-      tooWide: softContracts === 0,
-    }
-  }, [entryPrice, stopPrice, instrument, softStop, hardStop, maxContracts])
+  const result = useMemo(
+    () => computeSizing({ entryPrice, stopPrice, instrument, accountSize, mode, softStop, hardStop, maxContracts }),
+    [entryPrice, stopPrice, instrument, softStop, hardStop, maxContracts, accountSize, mode],
+  )
 
   const pillLabel = useMemo(() => {
     if (selectedAccount) return selectedAccount.name
@@ -245,7 +285,9 @@ export default function PositionSizer() {
                 <span className="text-gray-200 font-medium">${result.riskPerContract.toFixed(2)}</span>
               </p>
 
-              {result.tooWide ? (
+              {result.esBlocked ? (
+                <p className="text-sm font-semibold text-red-400">{result.esBlocked}</p>
+              ) : result.tooWide ? (
                 <p className="text-sm font-semibold text-red-400">
                   Stop too wide — reduce stop or switch to MES
                 </p>
@@ -270,6 +312,10 @@ export default function PositionSizer() {
                   Total risk (base):{' '}
                   <span className="text-gray-200 font-medium">${result.totalRiskSoft.toFixed(2)}</span>
                 </p>
+              )}
+
+              {!result.esBlocked && !result.tooWide && result.esNote && (
+                <p className="text-xs text-amber-400/90">{result.esNote}</p>
               )}
             </div>
           )}
