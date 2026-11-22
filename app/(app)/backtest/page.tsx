@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal'
 import FiveWordGateModal, { GateAnswers } from '@/components/journal/FiveWordGateModal'
 import BacktestTradeForm from '@/components/backtest/BacktestTradeForm'
 import BlindBacktestClient from '@/components/blind-backtest/BlindBacktestClient'
+import PlanReplay from '@/components/backtest/PlanReplay'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { getTodayChicagoDateString } from '@/lib/eod-gate'
@@ -16,7 +17,7 @@ import { Plus, Trash2, Edit2, Brain, TrendingUp, TrendingDown } from 'lucide-rea
 import { SYSTEM_SETUPS } from '@/lib/trading-system'
 import { POINT_VALUES } from '@/lib/instruments'
 
-type TopTab = 'blind' | 'manual'
+type TopTab = 'blind' | 'manual' | 'plan'
 
 function getWindowLabel(timeStr: string | null): string {
   if (!timeStr) return 'Unknown'
@@ -422,6 +423,11 @@ export default function BacktestPage() {
             topTab === 'manual' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
           📋 Session Log
         </button>
+        <button onClick={() => setTopTab('plan')}
+          className={cn('px-5 py-2 rounded-lg text-sm font-medium transition',
+            topTab === 'plan' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
+          🛡️ Plan Replay
+        </button>
         <button onClick={() => router.push('/backtest/brackets')}
           className="px-5 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition">
           📊 Bracket Sweep
@@ -434,6 +440,9 @@ export default function BacktestPage() {
 
       {/* Blind Backtest Engine */}
       {topTab === 'blind' && <BlindBacktestClient />}
+
+      {/* Plan Replay — real trades under the trading plan's daily rules */}
+      {topTab === 'plan' && <PlanReplay />}
 
       {/* Manual session log (existing content) */}
       {topTab === 'manual' && (
