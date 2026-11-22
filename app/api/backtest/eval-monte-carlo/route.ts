@@ -86,6 +86,13 @@ export interface EvalMonteCarloResponse {
 
 const MAX_DAYS = 120
 
+// A finite number within [lo, hi], or the default when the input is missing,
+// non-numeric, or non-finite.
+function clampNum(v: unknown, dflt: number, lo: number, hi: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : dflt
+  return Math.min(Math.max(n, lo), hi)
+}
+
 // A fractional tradesPerDay (e.g. 2.5) becomes a per-day quota of 2 or 3
 // with the right average, and never zero.
 function drawQuota(tradesPerDay: number): number {
@@ -365,10 +372,12 @@ export async function POST(request: NextRequest) {
       profitTarget:     body.profitTarget     ?? cfg.profitTarget,
       trailingDrawdown: body.trailingDrawdown ?? cfg.trailingDrawdown,
       riskPerTrade:     body.riskPerTrade     ?? planFor(acctSize).riskPerTrade.max,
-      tradesPerDay:     body.tradesPerDay     ?? 2.5,
+      // tradesPerDay and numSimulations set the loop length, so both are
+      // forced finite and bounded — Infinity or 1e9 would spin to the timeout.
+      tradesPerDay:     clampNum(body.tradesPerDay, 2.5, 0.5, 20),
       currentEquity:    body.currentEquity    ?? dfltCurrentEquity,
       currentThreshold: body.currentThreshold ?? dfltCurrentThreshold,
-      numSimulations:   Math.min(body.numSimulations ?? 10_000, 20_000),
+      numSimulations:   Math.round(clampNum(body.numSimulations, 10_000, 1_000, 20_000)),
       planRules:        applyPlanRules ? accountPlanRules : null,
     }
 
