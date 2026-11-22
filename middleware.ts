@@ -10,8 +10,19 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ['/login', '/signup']
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
-  // API routes that use their own auth (secret-header) — bypass cookie auth
-  const isPublicApiRoute = pathname.startsWith('/api/brief/')
+  // API routes that use their own auth (secret header) — bypass cookie auth.
+  // Vercel cron sends `Authorization: Bearer $CRON_SECRET` and no session
+  // cookie, so without these entries every scheduled run was 307'd to /login
+  // before the route's own secret check could run. Each listed route MUST
+  // authenticate itself and fail closed; add routes here explicitly, never by
+  // a broad /api/ prefix.
+  const SECRET_AUTH_API_PREFIXES = [
+    '/api/brief/',               // JOURNAL_AUTO_SECRET
+    '/api/cron/',                // CRON_SECRET (500 in prod if unset)
+    '/api/tradovate/cron',       // CRON_SECRET (500 in prod if unset)
+    '/api/claude/weekly-review', // CRON_SECRET + userId, else cookie session → 401
+  ]
+  const isPublicApiRoute = SECRET_AUTH_API_PREFIXES.some((p) => pathname.startsWith(p))
 
   // If user is not authenticated and trying to access a protected route
   if (!user && !isPublicRoute && !isPublicApiRoute) {

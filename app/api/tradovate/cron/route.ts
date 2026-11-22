@@ -8,8 +8,14 @@ import { isMarketHours } from '@/lib/market-hours'
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60_000
 
 export async function GET(request: NextRequest) {
-  // Verify Vercel cron secret when set (production guard)
+  // Verify Vercel cron secret. Fail closed in production when it is unset: the
+  // middleware no longer gates this path, so a missing secret must not mean an
+  // open endpoint. (Same guard as app/api/cron/weekly-review.)
   const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret && process.env.NODE_ENV === 'production') {
+    console.error('[tradovate/cron] CRON_SECRET not set in production')
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+  }
   if (cronSecret) {
     const auth = request.headers.get('authorization')
     if (auth !== `Bearer ${cronSecret}`) {
