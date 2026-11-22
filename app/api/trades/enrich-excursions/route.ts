@@ -16,6 +16,14 @@ import {
 const DEFAULT_BATCH = 40
 const POLYGON_GAP_MS = 220
 
+// Polygon's stock aggregates on this plan arrive ~15 minutes late. A trade
+// enriched right after it closes finds no bars yet — and "no bars" is the
+// terminal no_data status — so a CSV imported minutes after the session was
+// permanently marked no_data while the data was still on its way. Only trades
+// closed longer ago than this are processed; newer ones stay 'pending' for
+// the next run (next import, or the Settings backfill).
+const SETTLE_MS = 20 * 60 * 1000
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 interface EnrichUpdate {
@@ -43,12 +51,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const limit = Math.min(Math.max(Number(body?.limit) || DEFAULT_BATCH, 1), 100)
 
-    // Pull the next batch of unprocessed trades (uses trades_excursion_status_idx).
+    // Pull the next batch of unprocessed trades that have settled long enough
+    // for their bars to exist (uses trades_excursion_status_idx).
+    const settledBefore = new Date(Date.now() - SETTLE_MS).toISOString()
     const { data: pending, error: fetchErr } = await supabase
       .from('trades')
       .select('id, direction, entry_price, entry_time, exit_time, net_pnl, instrument')
       .eq('user_id', user.id)
       .eq('excursion_status', 'pending')
+      .lt('exit_time', settledBefore)
       .order('date', { ascending: true })
       .limit(limit)
 
@@ -57,8 +68,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: fetchErr.message }, { status: 500 })
     }
 
+    // Trades too recent to enrich yet — left pending, reported, not counted as
+    // remaining (so the client's drain loop still terminates).
+    const { count: waiting } = await supabase
+      .from('trades')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('excursion_status', 'pending')
+      .gte('exit_time', settledBefore)
+
     if (!pending || pending.length === 0) {
-      return NextResponse.json({ processed: 0, complete: 0, no_data: 0, failed: 0, remaining: 0 })
+      return NextResponse.json({ processed: 0, complete: 0, no_data: 0, failed: 0, remaining: 0, waiting: waiting ?? 0 })
     }
 
     let complete = 0
@@ -126,12 +146,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // How many still need processing after this batch.
+    // How many settled trades still need processing after this batch.
     const { count: remaining } = await supabase
       .from('trades')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .eq('excursion_status', 'pending')
+      .lt('exit_time', settledBefore)
 
     return NextResponse.json({
       processed: pending.length,
@@ -139,6 +160,7 @@ export async function POST(request: NextRequest) {
       no_data: noData,
       failed,
       remaining: remaining ?? 0,
+      waiting: waiting ?? 0,
     })
   } catch (err) {
     console.error('[enrich] route error:', err)
