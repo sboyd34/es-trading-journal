@@ -117,6 +117,9 @@ export default function BacktestPage() {
   const [trades, setTrades] = useState<BacktestTrade[]>([])
   const [tradesLoading, setTradesLoading] = useState(false)
   const [liveTrades, setLiveTrades] = useState<Trade[]>([])
+  // Every backtest trade across all dates — the comparison and edge-decay
+  // panels compare ALL backtests against ALL live trades, not one day's.
+  const [allBacktestTrades, setAllBacktestTrades] = useState<BacktestTrade[]>([])
   const [tab, setTab] = useState<PageTab>('session')
 
   // Session form
@@ -189,6 +192,17 @@ export default function BacktestPage() {
     loadLiveTrades()
   }, [loadLiveTrades])
 
+  const loadAllBacktestTrades = useCallback(async () => {
+    const res = await fetch('/api/backtest/trades')
+    if (!res.ok) return
+    const data = await res.json()
+    setAllBacktestTrades(data.trades ?? [])
+  }, [])
+
+  useEffect(() => {
+    loadAllBacktestTrades()
+  }, [loadAllBacktestTrades])
+
   async function handleSaveSession() {
     setSavingSession(true)
     try {
@@ -238,6 +252,7 @@ export default function BacktestPage() {
     setEditingTrade(null)
     setGateAnswers(null)
     setEditGateAnswers(null)
+    loadAllBacktestTrades()
   }
 
   function handleTradeFormClose() {
@@ -257,6 +272,7 @@ export default function BacktestPage() {
     const res = await fetch(`/api/backtest/trades/${id}`, { method: 'DELETE' })
     if (res.ok) {
       setTrades((prev) => prev.filter((t) => t.id !== id))
+      loadAllBacktestTrades()
       toast.success('Trade deleted')
     } else {
       toast.error('Delete failed')
@@ -313,11 +329,11 @@ export default function BacktestPage() {
   const comparison = useMemo(() => {
     const allSetups = new Set([
       ...SYSTEM_SETUPS,
-      ...trades.map((t) => t.setup_tag).filter(Boolean),
+      ...allBacktestTrades.map((t) => t.setup_tag).filter(Boolean),
       ...liveTrades.map((t) => t.setup_tag).filter(Boolean),
     ])
     return Array.from(allSetups).map((setup) => {
-      const bt = trades.filter((t) => t.setup_tag === setup)
+      const bt = allBacktestTrades.filter((t) => t.setup_tag === setup)
       const live = liveTrades.filter((t) => t.setup_tag === setup)
       return {
         setup: setup as string,
@@ -333,7 +349,7 @@ export default function BacktestPage() {
         },
       }
     }).filter((r) => r.backtest.count > 0 || r.live.count > 0)
-  }, [trades, liveTrades])
+  }, [allBacktestTrades, liveTrades])
 
   // Edge decay — only setups with BOTH backtest and live trades can be scored.
   // Sorted worst-first (most negative win-rate decay on top) so the setups that
@@ -365,12 +381,18 @@ export default function BacktestPage() {
       .sort((a, b) => a.winRateDecay - b.winRateDecay)
   }, [comparison])
 
-  // Silent-when-clean: Analytics and Compare & AI only appear once the selected
-  // date has backtest trades, and each comparison panel only when it has
-  // backtest data of its own. With none, an open sub-tab falls back to Session.
+  // Silent-when-clean: Analytics (that day's stats) appears once the selected
+  // date has backtest trades; Compare & AI (all dates) once any backtest trade
+  // exists. Each comparison panel renders only with backtest data of its own,
+  // and an open sub-tab with nothing to show falls back to Session.
   const hasBacktestTrades = trades.length > 0
   const hasBacktestComparison = comparison.some((r) => r.backtest.count > 0)
-  const activeTab: PageTab = hasBacktestTrades ? tab : 'session'
+  const visibleTabs: PageTab[] = [
+    'session',
+    ...(hasBacktestTrades ? ['analytics' as const] : []),
+    ...(hasBacktestComparison ? ['comparison' as const] : []),
+  ]
+  const activeTab: PageTab = visibleTabs.includes(tab) ? tab : 'session'
 
   async function handleAiSummary() {
     if (comparison.length === 0) {
@@ -456,9 +478,9 @@ export default function BacktestPage() {
       <div className="space-y-6">
 
       {/* Tabs — hidden entirely until there is more than Session to show */}
-      {hasBacktestTrades && (
+      {visibleTabs.length > 1 && (
         <div className="flex gap-1 bg-gray-800/50 border border-gray-700/50 rounded-xl p-1 w-fit">
-          {(['session', 'analytics', 'comparison'] as PageTab[]).map((t) => (
+          {visibleTabs.map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className={cn('px-5 py-2 rounded-lg text-sm font-medium transition capitalize',
                 activeTab === t ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}>
