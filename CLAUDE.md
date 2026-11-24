@@ -9,7 +9,7 @@ A futures trading journal for /ES and /MES. Built solo. Production: https://es-t
 - **Supabase** — Postgres + Auth
 - **Vercel** — hosting (auto-deploys `main`)
 - **Anthropic API** — Claude Sonnet 4.6 for AI narratives, pre-market brief, weekly review
-- **Polygon** — news (SPY + Mag 7 fan-out)
+- **Polygon** — news (SPY + Mag 7, one market-wide request; 5 req/min limit)
 - **Finnhub** — earnings calendar
 - **Tradovate** — broker fill sync
 
@@ -93,9 +93,10 @@ Both cron routes authenticate with `CRON_SECRET` (set in Vercel production) and 
 ## API integration patterns
 
 **Polygon news** (`lib/polygon-news.ts`):
-- Parallel fan-out across SPY + AAPL/MSFT/NVDA/GOOGL/AMZN/META/TSLA
+- **One market-wide request**, filtered to the watchlist (SPY + AAPL/MSFT/NVDA/GOOGL/AMZN/META/TSLA) in code. The key allows **5 requests a minute**; the old 8-call per-ticker fan-out had 3 tickers 429'd into silent `[]` on every refresh. ~500 market-wide articles/day fit one 1000-row page; one extra page is followed if a day overflows.
 - Dedup by article id, sort newest-first
-- Classifier: HIGH keyword list (Fed/CPI/earnings/etc) → all else is STD
+- Classifier: HIGH keyword list (Fed/CPI/earnings/etc) → all else is STD. HIGH is broad (it matches "market", "stocks") — it is not an event signal.
+- **Events** (`lib/news-events.ts`, patterns in `lib/news-events.json`): market-moving corporate events — leadership change, M&A, halt, guidance, regulatory, bankruptcy, split. `/api/news` returns them grouped one-per-story (`groupEventStories`) from the whole 24h window, pinned in the dashboard feed. **`news-events.json` is shared:** `~/claude-trading-assistant`'s `news-alerts` poller reads it by path to push the same events to the phone via ntfy. Change patterns there, not in code, and keep them in the JS/Python-common regex subset.
 - Per-trade match window: ±15 min of `entry_time` for HIGH-impact articles
 
 **Finnhub earnings** (`lib/finnhub-earnings.ts`):
