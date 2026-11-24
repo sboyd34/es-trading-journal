@@ -42,6 +42,32 @@ export interface NewsArticle {
   event: NewsEvent | null
 }
 
+// The pagination link comes from the response, and the API key is attached to
+// it — so follow it only to Polygon over HTTPS, never to wherever it points.
+function nextPageUrl(raw: string | undefined, apiKey: string): string | null {
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== 'https:' || u.hostname !== 'api.polygon.io') return null
+    u.searchParams.set('apiKey', apiKey)
+    return u.toString()
+  } catch {
+    return null
+  }
+}
+
+// Article links are third-party data rendered as hrefs; only http(s) passes,
+// so a javascript: URL can never become a clickable link.
+function safeHttpUrl(raw: string | undefined): string {
+  if (!raw) return ''
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : ''
+  } catch {
+    return ''
+  }
+}
+
 // SPY for macro/index coverage; Mag 7 for single-name earnings that move /ES.
 // Shared with the phone-alert poller via lib/news-events.json.
 const DEFAULT_TICKERS = EVENT_WATCHLIST
@@ -81,7 +107,7 @@ export async function fetchPolygonNews(params: {
       if (!res.ok) break
       const data: { results?: PolygonArticle[]; next_url?: string } = await res.json()
       all.push(...((data.results || []) as PolygonArticle[]))
-      next = data.next_url ? `${data.next_url}&apiKey=${apiKey}` : null
+      next = nextPageUrl(data.next_url, apiKey)
     } catch {
       break
     }
@@ -104,7 +130,7 @@ export async function fetchPolygonNews(params: {
     title: a.title,
     source: a.publisher?.name || 'Unknown',
     publishedAt: a.published_utc,
-    url: a.article_url,
+    url: safeHttpUrl(a.article_url),
     impact: classifyImpact(a.title, a.keywords || []),
     tickers: a.tickers || [],
     event: detectEvent(a.title),
