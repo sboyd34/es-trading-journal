@@ -57,6 +57,9 @@ export default function TradeAnnotationForm({
   // Tri-state: null = not recorded. Never defaults to false — an unanswered
   // trade stays out of the TP1 hit rate instead of counting as a miss.
   const [firstTargetHit, setFirstTargetHit] = useState<boolean | null>(trade.first_target_hit ?? null)
+  // Asked only when leg 1 hit TP: leg 2's target lies beyond leg 1's, so a
+  // leg-2 answer without a leg-1 fill means nothing. Null = not recorded.
+  const [secondTargetHit, setSecondTargetHit] = useState<boolean | null>(trade.second_target_hit ?? null)
   const [notes, setNotes] = useState(trade.notes || '')
   const [reflection, setReflection] = useState(trade.reflection || '')
   const [tags, setTags] = useState(() => {
@@ -278,6 +281,7 @@ export default function TradeAnnotationForm({
           target: offSystem ? null : (target ? parseFloat(target) : null),
           atr_at_entry: offSystem ? null : (atrAtEntry ? parseFloat(atrAtEntry) : null),
           first_target_hit: offSystem ? null : firstTargetHit,
+          second_target_hit: offSystem || firstTargetHit !== true ? null : secondTargetHit,
           notes: notes || null,
           reflection: reflection || null,
           tags: offSystem ? [] : (tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : []),
@@ -444,6 +448,35 @@ export default function TradeAnnotationForm({
               ))}
             </div>
           </div>
+
+          {/* Second contract at TP — only once leg 1 is a Yes. Leg 2's stop
+              moves to breakeven when leg 1 fills, so No means it scratched. */}
+          {firstTargetHit === true && (
+            <div className="mt-3 pt-3 border-t border-gray-700/50 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-gray-300">Second contract hit TP?</p>
+                <p className="text-[11px] text-gray-500">Did leg 2 reach its target, or get stopped at breakeven?</p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                {([
+                  { label: 'Yes', value: true, on: 'border-emerald-500 bg-emerald-500/20 text-emerald-400' },
+                  { label: 'No', value: false, on: 'border-red-500 bg-red-500/20 text-red-400' },
+                ] as const).map(({ label, value, on }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setSecondTargetHit(secondTargetHit === value ? null : value)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors',
+                      secondTargetHit === value ? on : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Derived readout — the payoff for filling the fields in */}
           {plan && !plan.stopInverted && !plan.targetInverted && (

@@ -41,6 +41,7 @@ export interface Trade {
   target: number | null
   atr_at_entry: number | null
   first_target_hit: boolean | null
+  second_target_hit: boolean | null
   notes: string | null
   reflection: string | null
   tags: string[]

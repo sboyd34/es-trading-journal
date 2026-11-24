@@ -135,7 +135,7 @@ SQL files live in `supabase/`. No automated tracker yet — runs are manual:
 
 Columns are probed one request each (a missing one answers for itself with `42703`). Indexes can't be: they change the query plan, never the shape of a response, so they route through the `public.schema_index_names()` helper from `add_schema_index_introspection.sql`. If that helper isn't applied the check **fails rather than skipping** — unverified is not verified, which is the whole point of the tool.
 
-Outstanding migrations: none. Verified live as of 2026-10-02 — 33 migration-added columns, 8 indexes, no drift.
+Outstanding migrations: none. Verified live as of 2026-11-24 — 36 migration-added columns, 8 indexes, no drift.
 
 Two deploy-order rules worth remembering, both learned the hard way:
 
