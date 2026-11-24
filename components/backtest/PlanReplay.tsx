@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { cn, formatCurrency } from '@/lib/utils'
 import { ctTimeLabel } from '@/lib/trade-flags'
 import { replayPlan } from '@/lib/plan-replay'
+import { bracketWhatIf } from '@/lib/bracket-whatif'
+import { feeForContracts } from '@/lib/tradovate-parser'
 import type { ApexAccount, Trade } from '@/types'
 import { ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react'
 
@@ -24,6 +26,117 @@ function Stat({ label, value, tone, sub }: { label: string; value: string; tone?
 }
 
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${formatCurrency(Math.abs(v))}`
+
+const BRACKET_PRESETS: [number, number][] = [[8, 8], [8, 12], [8, 16], [6, 12]]
+const ES_FEE = feeForContracts('ES', 1)
+
+// Every trade replayed as 1 ES under a fixed stop/target (lib/bracket-whatif).
+// Shows a range, because the journal only partly knows each trade's path.
+function BracketWhatIfCard({ trades }: { trades: Trade[] }) {
+  const [stopTicks, setStopTicks] = useState(8)
+  const [targetTicks, setTargetTicks] = useState(16)
+  const clampTicks = (v: number) => Math.min(Math.max(Math.round(v) || 1, 1), 80)
+
+  const w = useMemo(() => bracketWhatIf(trades, stopTicks, targetTicks, { fee: ES_FEE }), [trades, stopTicks, targetTicks])
+  const actualAt1 = useMemo(
+    () => trades.reduce((s, t) => s + (t.direction === 'long' ? 1 : -1) * (t.exit_price - t.entry_price) * 50 - ES_FEE, 0),
+    [trades],
+  )
+  const unknown = w.orderUnknown + w.exitedEarly
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-4">
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-200">Bracket what-if — every trade as 1 ES</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Win {signed(w.winPnl)} · loss {signed(w.lossPnl)} (incl. ${ES_FEE.toFixed(2)} fee) · break-even win rate {w.breakevenRate.toFixed(1)}%
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {BRACKET_PRESETS.map(([s, t]) => (
+            <button key={`${s}/${t}`} onClick={() => { setStopTicks(s); setTargetTicks(t) }}
+              className={cn('px-2.5 py-1 rounded-md text-xs font-medium border transition',
+                s === stopTicks && t === targetTicks
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-900/60 border-gray-700 text-gray-400 hover:text-white')}>
+              {s}/{t}
+            </button>
+          ))}
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            stop
+            <input type="number" min={1} max={80} value={stopTicks}
+              onChange={(e) => setStopTicks(clampTicks(Number(e.target.value)))}
+              className="w-14 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs text-gray-200" />
+          </label>
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            target
+            <input type="number" min={1} max={80} value={targetTicks}
+              onChange={(e) => setTargetTicks(clampTicks(Number(e.target.value)))}
+              className="w-14 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs text-gray-200" />
+          </label>
+          <span className="text-xs text-gray-600">ticks</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
+        {[
+          ['Definite win', w.definiteWin, 'text-emerald-400'],
+          ['Definite loss', w.definiteLoss, 'text-red-400'],
+          ['Likely win', w.likelyWin, 'text-emerald-300/80'],
+          ['Likely loss', w.likelyLoss, 'text-red-300/80'],
+          ['Order unknown', w.orderUnknown, 'text-gray-400'],
+          ['Exited early', w.exitedEarly, 'text-gray-400'],
+        ].map(([label, n, cls]) => (
+          <div key={label as string} className="bg-gray-900/40 rounded-lg py-2">
+            <p className={cn('text-lg font-bold tabular-nums', cls as string)}>{n as number}</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label as string}</p>
+          </div>
+        ))}
+      </div>
+
+      <table className="w-full text-sm">
+        <tbody>
+          <tr className="border-b border-gray-700/30">
+            <td className="py-2 text-gray-400">Known outcomes ({w.resolved} trades)</td>
+            <td className="py-2 text-right text-gray-400 tabular-nums">
+              {w.winRate === null ? '—' : `${w.wins}W / ${w.losses}L · ${w.winRate.toFixed(1)}%`}
+            </td>
+            <td className={cn('py-2 text-right font-semibold tabular-nums w-28', w.resolvedNet >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+              {signed(w.resolvedNet)}
+            </td>
+          </tr>
+          <tr className="border-b border-gray-700/30">
+            <td className="py-2 text-gray-300">All {w.total}, unknowns at that win rate</td>
+            <td className="py-2 text-right text-gray-500 tabular-nums">
+              {w.expectancy === null ? '' : `${signed(w.expectancy)}/trade`}
+            </td>
+            <td className={cn('py-2 text-right font-bold tabular-nums', (w.estimateAll ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+              {w.estimateAll === null ? '—' : signed(w.estimateAll)}
+            </td>
+          </tr>
+          <tr className="border-b border-gray-700/30">
+            <td className="py-2 text-gray-400">Range: all {unknown} unknowns lost … all won</td>
+            <td />
+            <td className="py-2 text-right text-gray-400 tabular-nums whitespace-nowrap">{signed(w.worstAll)} … {signed(w.bestAll)}</td>
+          </tr>
+          <tr>
+            <td className="py-2 text-gray-500">For comparison: 1 ES each, your actual exits</td>
+            <td />
+            <td className={cn('py-2 text-right tabular-nums', actualAt1 >= 0 ? 'text-emerald-400/80' : 'text-red-400/80')}>{signed(actualAt1)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="text-[11px] text-gray-500 leading-relaxed">
+        A loss is proven by any close past the stop; a win only by MFE or a close at the full target — so known outcomes
+        lean toward losses, more as the target widens. {w.exitedEarly} trades closed before reaching either level; log MFE/MAE
+        on every trade to turn the range into one answer.
+        {w.typoFixes > 0 && ` ${w.typoFixes} hand-entered MFE/MAE values were smaller than the trade's own exit and were raised to it.`}
+      </p>
+    </div>
+  )
+}
 
 export default function PlanReplay() {
   const supabase = createClient()
@@ -158,6 +271,8 @@ export default function PlanReplay() {
           </tbody>
         </table>
       </div>
+
+      <BracketWhatIfCard trades={trades} />
 
       <p className="text-[11px] text-gray-600">
         Small samples swing hard — a few days say little about the plan. Let the totals build before changing a rule.
