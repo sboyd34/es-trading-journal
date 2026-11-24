@@ -12,6 +12,16 @@ export interface NewsArticle {
   url: string
   impact: 'HIGH' | 'MED' | 'STD'
   tickers: string[]
+  event: { type: string; label: string } | null
+}
+
+// One market-moving event story (lib/polygon-news groupEventStories).
+interface EventStory {
+  key: string
+  ticker: string
+  event: { type: string; label: string }
+  latest: NewsArticle
+  count: number
 }
 
 // Secondary window scan: 12:00–14:30 CT
@@ -78,6 +88,7 @@ interface Props {
 
 export default function MarketNewsFeed({ onMacroEvent }: Props) {
   const [articles, setArticles] = useState<NewsArticle[]>([])
+  const [events, setEvents] = useState<EventStory[]>([])
   const [newIds, setNewIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -120,6 +131,7 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
       prevIdsRef.current = new Set(fetched.map((a) => a.id))
 
       setArticles(fetched)
+      setEvents(data.events || [])
       setLastUpdated(new Date())
       setError(null)
       lastFetchRef.current = Date.now()
@@ -238,6 +250,32 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
         </div>
       )}
 
+      {/* Market-moving events (last 24h) — pinned so they can't scroll away.
+          Silent when there are none. */}
+      {events.length > 0 && !collapsed && (
+        <div className="bg-violet-500/10 border-b border-violet-500/30 px-4 py-3 space-y-2">
+          {events.map((s) => (
+            <a
+              key={s.key}
+              href={s.latest.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-start gap-2"
+            >
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-violet-500/25 text-violet-300 border border-violet-500/40 shrink-0">
+                {s.ticker} · {s.event.label}
+              </span>
+              <span className="text-xs text-violet-100/90 leading-snug group-hover:text-white transition">
+                {s.latest.title}
+                <span className="text-violet-300/50">
+                  {' '}· {formatRelative(s.latest.publishedAt)}{s.count > 1 ? ` · ${s.count} articles` : ''}
+                </span>
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+
       {/* Body — hidden on mobile when collapsed */}
       <div className={cn(collapsed ? 'hidden md:block' : 'block')}>
         {loading ? (
@@ -270,9 +308,15 @@ export default function MarketNewsFeed({ onMacroEvent }: Props) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pt-0.5">
-                  <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide', IMPACT_BADGE[article.impact])}>
-                    {article.impact}
-                  </span>
+                  {article.event ? (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-violet-500/25 text-violet-300 border border-violet-500/40">
+                      Event
+                    </span>
+                  ) : (
+                    <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide', IMPACT_BADGE[article.impact])}>
+                      {article.impact}
+                    </span>
+                  )}
                   <ExternalLink className="h-3.5 w-3.5 text-gray-600 group-hover:text-gray-400 transition" />
                 </div>
               </a>

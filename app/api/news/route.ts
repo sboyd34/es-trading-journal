@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchPolygonNews } from '@/lib/polygon-news'
+import { fetchPolygonNews, groupEventStories } from '@/lib/polygon-news'
 
 export async function GET(request: NextRequest) {
   const apiKey = process.env.POLYGON_API_KEY
@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
   const entryTime = searchParams.get('entryTime')
 
   try {
-    const articles = await fetchPolygonNews({ apiKey, hours, limit: limit * 3 })
+    // Fetch the whole window (up to 50 per ticker) so event stories are found
+    // even when they have scrolled out of the newest `limit` headlines.
+    const articles = await fetchPolygonNews({ apiKey, hours, limit: 400 })
 
     if (entryTime) {
       const entryMs = new Date(entryTime).getTime()
@@ -26,7 +28,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ articles: nearby, total: nearby.length })
     }
 
-    return NextResponse.json({ articles: articles.slice(0, limit), total: articles.length })
+    return NextResponse.json({
+      articles: articles.slice(0, limit),
+      total: articles.length,
+      events: groupEventStories(articles),
+    })
   } catch {
     return NextResponse.json({ error: 'News temporarily unavailable', articles: [] }, { status: 200 })
   }

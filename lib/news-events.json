@@ -1,0 +1,71 @@
+{
+  "_comment": "Market-moving corporate events. SINGLE SOURCE for both the journal (lib/news-events.ts — dashboard EVENT badge) and ~/claude-trading-assistant (news-alerts phone pushes, which reads this file by path). Patterns are case-insensitive regexes in the syntax common to JavaScript and Python: \\b, groups, alternation, \\w. An event fires when ANY of its rules matches; a rule matches when ALL of its patterns match the headline. 'exclude' drops a headline outright (law-firm 'investor alert' spam).",
+  "watchlist": ["SPY", "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"],
+  "exclude": [
+    "investor alert",
+    "shareholder alert",
+    "class action",
+    "investors who (lost|suffered)",
+    "deadline alert",
+    "law firm",
+    "hagens berman",
+    "rosen law",
+    "pomerantz",
+    "bronstein",
+    "levi & korsinsky",
+    "faruqi"
+  ],
+  "events": [
+    {
+      "type": "leadership",
+      "label": "Leadership change",
+      "match": [
+        ["\\b(rehir|reinstat|oust)\\w*", "\\b(ceo|chief|founder|chairman|president|huang|cook|nadella|pichai|jassy|zuckerberg|musk)\\b"],
+        ["\\b(resign\\w*|steps? down|stepping down)\\b"],
+        ["\\b(ceo|chief executive|cfo|chief financial officer|chairman)\\b", "\\b(appoint\\w*|named|names|replac\\w*|retir\\w*|depart\\w*|succeed\\w*|successor|returns?|is back|exits?|fired|ousted)\\b"]
+      ]
+    },
+    {
+      "type": "mna",
+      "label": "Merger / acquisition",
+      "match": [
+        ["\\b(acquires|to acquire|acquisition of|agrees to buy|deal to buy|merger|merges with|takeover|buyout|tender offer)\\b"]
+      ]
+    },
+    {
+      "type": "halt",
+      "label": "Trading halt",
+      "match": [
+        ["\\btrading (halt|halted|suspended)\\b|\\bhalt(s|ed)? trading\\b"]
+      ]
+    },
+    {
+      "type": "guidance",
+      "label": "Guidance change",
+      "match": [
+        ["\\b(cuts?|lowers?|slashes|withdraws?|raises?|hikes?|boosts?)\\b", "\\b(guidance|outlook)\\b"]
+      ]
+    },
+    {
+      "type": "regulatory",
+      "label": "Regulatory action",
+      "match": [
+        ["\\b(sec|doj|ftc|justice department|antitrust|european commission)\\b", "\\b(probe|investigat\\w*|charges?|charged|sues|sued|lawsuit|subpoena\\w*|fined|ruling)\\b"]
+      ]
+    },
+    {
+      "type": "bankruptcy",
+      "label": "Bankruptcy",
+      "match": [
+        ["\\bchapter 11\\b|\\bbankrupt\\w*"]
+      ]
+    },
+    {
+      "type": "split",
+      "label": "Stock split",
+      "match": [
+        ["\\bstock split\\b|\\b\\d+-for-\\d+ split\\b"]
+      ]
+    }
+  ]
+}

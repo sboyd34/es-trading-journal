@@ -1,3 +1,5 @@
+import { detectEvent, EVENT_WATCHLIST, type NewsEvent } from '@/lib/news-events'
+
 const HIGH_KEYWORDS = [
   'fed', 'federal reserve', 'fomc', 'cpi', 'nfp', 'ppi',
   'inflation', 'interest rate', 'rate hike', 'rate cut', 'payroll',
@@ -36,10 +38,13 @@ export interface NewsArticle {
   url: string
   impact: 'HIGH' | 'MED' | 'STD'
   tickers: string[]
+  // A market-moving corporate event (CEO change, M&A, halt…), or null.
+  event: NewsEvent | null
 }
 
 // SPY for macro/index coverage; Mag 7 for single-name earnings that move /ES.
-const DEFAULT_TICKERS = ['SPY', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA']
+// Shared with the phone-alert poller via lib/news-events.json.
+const DEFAULT_TICKERS = EVENT_WATCHLIST
 
 export async function fetchPolygonNews(params: {
   apiKey: string
@@ -54,40 +59,40 @@ export async function fetchPolygonNews(params: {
     params.publishedGte ||
     new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
 
-  const fetchForTicker = async (ticker: string): Promise<PolygonArticle[]> => {
-    const url = new URL('https://api.polygon.io/v2/reference/news')
-    url.searchParams.set('apiKey', apiKey)
-    url.searchParams.set('ticker', ticker)
-    url.searchParams.set('published_utc.gte', publishedGte)
-    if (params.publishedLte) url.searchParams.set('published_utc.lte', params.publishedLte)
-    url.searchParams.set('limit', String(Math.min(limit, 50)))
-    url.searchParams.set('sort', 'published_utc')
-    url.searchParams.set('order', 'desc')
+  // ONE market-wide request, filtered to the watchlist here. The key allows 5
+  // requests a minute; the old per-ticker fan-out made 8 per refresh, so 3
+  // tickers came back 429 → [] and silently vanished from the feed. A day is
+  // ~500 market-wide articles, so one page (max 1000) covers 24h; one extra
+  // page is followed if a heavy day overflows it.
+  const want = new Set(tickers)
+  const url = new URL('https://api.polygon.io/v2/reference/news')
+  url.searchParams.set('apiKey', apiKey)
+  url.searchParams.set('published_utc.gte', publishedGte)
+  if (params.publishedLte) url.searchParams.set('published_utc.lte', params.publishedLte)
+  url.searchParams.set('limit', '1000')
+  url.searchParams.set('sort', 'published_utc')
+  url.searchParams.set('order', 'desc')
 
+  const all: PolygonArticle[] = []
+  let next: string | null = url.toString()
+  for (let page = 0; page < 2 && next; page++) {
     try {
-      const res = await fetch(url.toString(), {
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      })
-      if (!res.ok) return []
-      const data = await res.json()
-      return (data.results || []) as PolygonArticle[]
+      const res: Response = await fetch(next, { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      if (!res.ok) break
+      const data: { results?: PolygonArticle[]; next_url?: string } = await res.json()
+      all.push(...((data.results || []) as PolygonArticle[]))
+      next = data.next_url ? `${data.next_url}&apiKey=${apiKey}` : null
     } catch {
-      return []
+      break
     }
   }
 
-  const perTicker = await Promise.all(tickers.map(fetchForTicker))
-
   const seen = new Set<string>()
   const merged: PolygonArticle[] = []
-  for (const arr of perTicker) {
-    for (const a of arr) {
-      if (!seen.has(a.id)) {
-        seen.add(a.id)
-        merged.push(a)
-      }
-    }
+  for (const a of all) {
+    if (seen.has(a.id) || !(a.tickers || []).some((t) => want.has(t))) continue
+    seen.add(a.id)
+    merged.push(a)
   }
 
   merged.sort(
@@ -102,7 +107,32 @@ export async function fetchPolygonNews(params: {
     url: a.article_url,
     impact: classifyImpact(a.title, a.keywords || []),
     tickers: a.tickers || [],
+    event: detectEvent(a.title),
   }))
+}
+
+// One entry per story: a big event produces dozens of articles (44 for one
+// CEO change), so group by watchlist ticker + event type and keep the newest
+// headline with a count. Input is newest-first, as fetchPolygonNews returns it.
+export interface NewsEventStory {
+  key: string
+  ticker: string
+  event: NewsEvent
+  latest: NewsArticle
+  count: number
+}
+
+export function groupEventStories(articles: NewsArticle[]): NewsEventStory[] {
+  const stories = new Map<string, NewsEventStory>()
+  for (const a of articles) {
+    if (!a.event) continue
+    const ticker = a.tickers.find((t) => DEFAULT_TICKERS.includes(t)) ?? a.tickers[0] ?? '—'
+    const key = `${ticker}:${a.event.type}`
+    const s = stories.get(key)
+    if (s) s.count++
+    else stories.set(key, { key, ticker, event: a.event, latest: a, count: 1 })
+  }
+  return Array.from(stories.values())
 }
 
 export function findNewsRelatedEntryTimes<T extends { entry_time: string }>(
