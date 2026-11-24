@@ -4,12 +4,18 @@ import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { ComboResult, BracketSweepResponse } from '@/app/api/backtest/bracket-sweep/route'
+import {
+  SWEEP_STOP_TICKS as STOPS,
+  SWEEP_TARGET_TICKS as TARGETS,
+  PLAN_BRACKET,
+  SWEEP_MIN_RESOLVED,
+  SWEEP_MIN_RESOLVED_SHARE,
+} from '@/lib/bracket-whatif'
 
-const STOPS = [6, 8, 10, 12, 14]
-const TARGETS = [10, 12, 15, 18, 20, 24]
-
-const LIVE_STOP = 10
-const LIVE_TARGET = 20
+// The trading plan's bracket (8-tick stop / 16-tick target) — outlined as "live".
+const LIVE_STOP = PLAN_BRACKET.stopTicks
+const LIVE_TARGET = PLAN_BRACKET.targetTicks
+const signedCurrency = (v: number) => `${v >= 0 ? '+' : '−'}${formatCurrency(Math.abs(v))}`
 
 function expectancyColor(value: number, maxAbs: number): string {
   if (maxAbs === 0) return 'rgba(75,85,99,0.4)'
@@ -67,32 +73,36 @@ export default function BracketsPage() {
     }
   }, [dateFrom, dateTo, setup, direction, minGrade, source])
 
+  // Best = highest expectancy among cells with enough known outcomes, both in
+  // count and as a share of all trades (see SWEEP_MIN_RESOLVED_SHARE: wide
+  // stops hide losses the way wide targets hide wins).
   const bestCombo = useMemo(() => {
     if (!data) return null
     return data.results
-      .filter(r => r.tradeCount > 0)
+      .filter(r => r.expectancy !== null && r.resolved >= SWEEP_MIN_RESOLVED &&
+        r.resolved >= r.total * SWEEP_MIN_RESOLVED_SHARE)
       .reduce<ComboResult | null>(
-        (best, r) => (best === null || r.expectancy > best.expectancy ? r : best),
+        (best, r) => (best === null || (r.expectancy ?? -Infinity) > (best.expectancy ?? -Infinity) ? r : best),
         null
       )
   }, [data])
 
   const maxAbsExpectancy = useMemo(() => {
     if (!data) return 0
-    return Math.max(...data.results.map(r => Math.abs(r.expectancy)), 1)
+    return Math.max(...data.results.map(r => Math.abs(r.expectancy ?? 0)), 1)
   }, [data])
 
   const detailCombo = useMemo(() => {
     if (!data || !selectedCombo) return null
     return (
       data.results.find(
-        r => r.stop === selectedCombo.stop && r.target === selectedCombo.target
+        r => r.stopTicks === selectedCombo.stop && r.targetTicks === selectedCombo.target
       ) ?? null
     )
   }, [data, selectedCombo])
 
   function getCombo(stop: number, target: number): ComboResult | undefined {
-    return data?.results.find(r => r.stop === stop && r.target === target)
+    return data?.results.find(r => r.stopTicks === stop && r.targetTicks === target)
   }
 
   return (
@@ -241,26 +251,28 @@ export default function BracketsPage() {
         <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-gray-200">Expectancy Heatmap</h2>
+              <h2 className="text-sm font-semibold text-gray-200">Expectancy Heatmap — every trade as 1 ES, in ticks</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                {data.totalIncluded} trades included · {data.excludedCount} excluded (no MAE/MFE) ·{' '}
-                {data.liveCount} live · {data.backtestCount} backtest
+                {data.totalIncluded} trades · {data.liveCount} live · {data.backtestCount} backtest · expectancy at each
+                cell&apos;s known win rate, fees included · n = known outcomes
               </p>
             </div>
-            {bestCombo && (
+            {bestCombo && bestCombo.expectancy !== null && (
               <div className="text-right">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Best combo</p>
-                <p className="text-sm font-bold text-emerald-400">
-                  {bestCombo.stop}pt stop / {bestCombo.target}pt target
+                <p className="text-xs text-gray-500 uppercase tracking-wide">
+                  Best combo (n ≥ {SWEEP_MIN_RESOLVED}, ≥ {Math.round(SWEEP_MIN_RESOLVED_SHARE * 100)}% known)
                 </p>
-                <p className="text-xs text-emerald-400/70">{formatCurrency(bestCombo.expectancy)}/trade</p>
+                <p className="text-sm font-bold text-emerald-400">
+                  {bestCombo.stopTicks}t stop / {bestCombo.targetTicks}t target
+                </p>
+                <p className="text-xs text-emerald-400/70">{signedCurrency(bestCombo.expectancy)}/trade · n={bestCombo.resolved}</p>
               </div>
             )}
           </div>
 
           {data.totalIncluded === 0 ? (
             <p className="text-center py-8 text-gray-500 text-sm">
-              No trades with MAE/MFE data matched your filters.
+              No trades matched your filters.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -274,7 +286,7 @@ export default function BracketsPage() {
                 </div>
                 {TARGETS.map(t => (
                   <div key={t} className="text-xs font-medium text-gray-400 text-center pb-1">
-                    {t}pt
+                    {t}t
                   </div>
                 ))}
 
@@ -285,21 +297,24 @@ export default function BracketsPage() {
                       key={`label-${stop}`}
                       className="text-xs font-medium text-gray-400 text-right pr-2 self-center"
                     >
-                      {stop}pt
+                      {stop}t
                     </div>
                     {TARGETS.map(target => {
                       const combo = getCombo(stop, target)
                       const exp = combo?.expectancy ?? 0
-                      const bgColor = combo
+                      const bgColor = combo && combo.expectancy !== null
                         ? expectancyColor(exp, maxAbsExpectancy)
                         : 'rgba(75,85,99,0.2)'
                       const isLive = stop === LIVE_STOP && target === LIVE_TARGET
                       const isBest =
-                        bestCombo?.stop === stop && bestCombo?.target === target
+                        bestCombo?.stopTicks === stop && bestCombo?.targetTicks === target
                       const isSelected =
                         selectedCombo?.stop === stop && selectedCombo?.target === target
                       const tooltipText = combo
-                        ? `${combo.tradeCount} trades · ${combo.liveCount} live / ${combo.backtestCount} backtest\nWin rate: ${combo.winRate.toFixed(0)}%\nExpectancy: ${formatCurrency(exp)}`
+                        ? `${combo.wins}W / ${combo.losses}L known of ${combo.total} trades` +
+                          (combo.winRate !== null ? ` · ${combo.winRate.toFixed(0)}% (break-even ${combo.breakevenRate.toFixed(0)}%)` : '') +
+                          `\nUnknown: ${combo.orderUnknown + combo.exitedEarly}` +
+                          (combo.expectancy !== null ? `\nExpectancy: ${signedCurrency(combo.expectancy)}/trade` : '')
                         : ''
                       return (
                         <button
@@ -321,8 +336,11 @@ export default function BracketsPage() {
                           style={{ backgroundColor: bgColor }}
                         >
                           <span className={exp >= 0 ? 'text-emerald-100' : 'text-red-100'}>
-                            {combo ? formatCurrency(exp) : '—'}
+                            {combo && combo.expectancy !== null ? signedCurrency(exp) : '—'}
                           </span>
+                          {combo && (
+                            <span className="text-[9px] text-white/50 font-normal leading-none">n={combo.resolved}</span>
+                          )}
                           {isLive && (
                             <span className="text-[9px] text-amber-300 font-bold leading-none">
                               LIVE
@@ -344,7 +362,7 @@ export default function BracketsPage() {
               <div className="flex items-center gap-4 mt-3 text-[10px] text-gray-500">
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block w-3 h-3 rounded border-2 border-amber-400 bg-transparent" />
-                  <span>Your live bracket</span>
+                  <span>Your plan bracket ({LIVE_STOP}t / {LIVE_TARGET}t)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block w-3 h-3 rounded border-2 border-emerald-400 bg-transparent" />
@@ -364,43 +382,42 @@ export default function BracketsPage() {
       {detailCombo && (
         <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-200">
-            Detail — {detailCombo.stop}pt Stop / {detailCombo.target}pt Target
+            Detail — {detailCombo.stopTicks}-tick stop / {detailCombo.targetTicks}-tick target · win{' '}
+            {signedCurrency(detailCombo.winPnl)} · loss {signedCurrency(detailCombo.lossPnl)} · break-even{' '}
+            {detailCombo.breakevenRate.toFixed(1)}%
           </h2>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               {
-                label: 'Trades',
-                value: detailCombo.tradeCount.toString(),
-                color: 'text-white',
+                label: 'Known outcomes',
+                value: `${detailCombo.wins}W · ${detailCombo.losses}L`,
+                color: 'text-gray-200',
               },
               {
-                label: 'Win Rate',
-                value: `${detailCombo.winRate.toFixed(1)}%`,
-                color: detailCombo.winRate >= 50 ? 'text-emerald-400' : 'text-yellow-400',
+                label: 'Known win rate',
+                value: detailCombo.winRate === null ? '—' : `${detailCombo.winRate.toFixed(1)}%`,
+                color: detailCombo.winRate !== null && detailCombo.winRate >= detailCombo.breakevenRate ? 'text-emerald-400' : 'text-yellow-400',
               },
               {
                 label: 'Expectancy',
-                value: formatCurrency(detailCombo.expectancy),
-                color: detailCombo.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400',
+                value: detailCombo.expectancy === null ? '—' : `${signedCurrency(detailCombo.expectancy)}/trade`,
+                color: (detailCombo.expectancy ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400',
               },
               {
-                label: 'Total P&L',
-                value: formatCurrency(detailCombo.totalPnL),
-                color: detailCombo.totalPnL >= 0 ? 'text-emerald-400' : 'text-red-400',
+                label: `All ${detailCombo.total}, estimated`,
+                value: detailCombo.estimateAll === null ? '—' : signedCurrency(detailCombo.estimateAll),
+                color: (detailCombo.estimateAll ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400',
               },
               {
-                label: 'Profit Factor',
-                value:
-                  detailCombo.profitFactor === Infinity
-                    ? '∞'
-                    : detailCombo.profitFactor.toFixed(2),
-                color: detailCombo.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400',
+                label: 'Known net',
+                value: signedCurrency(detailCombo.resolvedNet),
+                color: detailCombo.resolvedNet >= 0 ? 'text-emerald-400' : 'text-red-400',
               },
               {
-                label: 'Max Consec Losses',
-                value: detailCombo.maxConsecLosses.toString(),
-                color: detailCombo.maxConsecLosses >= 5 ? 'text-red-400' : 'text-yellow-400',
+                label: 'Range (unknowns lost … won)',
+                value: `${signedCurrency(detailCombo.worstAll)} … ${signedCurrency(detailCombo.bestAll)}`,
+                color: 'text-gray-300',
               },
               {
                 label: 'Live / Backtest',
@@ -408,34 +425,38 @@ export default function BracketsPage() {
                 color: 'text-gray-300',
               },
               {
-                label: 'Wins / Losses',
-                value: `${detailCombo.winCount}W · ${detailCombo.lossCount}L`,
+                label: 'Definite · likely',
+                value: `${detailCombo.definiteWin + detailCombo.definiteLoss} · ${detailCombo.likelyWin + detailCombo.likelyLoss}`,
                 color: 'text-gray-300',
               },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-gray-900/40 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-500 mb-1">{label}</p>
-                <p className={cn('text-lg font-bold', color)}>{value}</p>
+                <p className={cn('text-base font-bold tabular-nums', color)}>{value}</p>
               </div>
             ))}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
             <div className="bg-gray-900/40 rounded-lg p-3">
-              <p className="text-xs text-gray-500 mb-1">Unresolved trades</p>
-              <p className="text-base font-bold text-gray-300">{detailCombo.unresolvedCount}</p>
+              <p className="text-xs text-gray-500 mb-1">Exited early</p>
+              <p className="text-base font-bold text-gray-300">{detailCombo.exitedEarly}</p>
               <p className="text-[10px] text-gray-600 mt-0.5">
-                Neither stop nor target was reached — scored at actual realized P&L
+                Closed before reaching either level — the bracket would still be running, so the outcome is unknown
               </p>
             </div>
             <div className="bg-gray-900/40 rounded-lg p-3">
-              <p className="text-xs text-gray-500 mb-1">Ambiguous trades</p>
-              <p className="text-base font-bold text-amber-400">{detailCombo.ambiguousCount}</p>
+              <p className="text-xs text-gray-500 mb-1">Order unknown</p>
+              <p className="text-base font-bold text-amber-400">{detailCombo.orderUnknown}</p>
               <p className="text-[10px] text-gray-600 mt-0.5">
-                MAE ≥ stop AND MFE ≥ target — hit order unknown; resolved conservatively as losses
+                MAE reached the stop AND MFE reached the target — which came first isn&apos;t recorded
               </p>
             </div>
           </div>
+          <p className="text-[10px] text-gray-600">
+            Known outcomes lean toward losses as the target widens: a loss is proven by any close past the stop, a win only
+            by MFE or a close at the full target. Log MFE/MAE on every trade to narrow the range.
+          </p>
         </div>
       )}
 

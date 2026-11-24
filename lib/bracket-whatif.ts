@@ -53,6 +53,21 @@ export interface BracketWhatIf {
 
 const TICK = 0.25
 
+// Bracket Sweep grid, in ticks, centred on the plan's 8-tick stop / 16-tick
+// target. Shared by the sweep route and page (route files may only export
+// handlers, so the constants live here).
+export const SWEEP_STOP_TICKS = [6, 8, 10, 12, 16]
+export const SWEEP_TARGET_TICKS = [8, 12, 16, 20, 24, 32]
+export const PLAN_BRACKET = { stopTicks: 8, targetTicks: 16 }
+// "Best combo" needs this many known outcomes, so a cell resting on a handful
+// of trades cannot win on noise...
+export const SWEEP_MIN_RESOLVED = 10
+// ...AND at least this share of all trades known. The bias runs both ways: a
+// wide target makes wins hard to prove (known win rate too LOW), and a wide
+// stop makes losses hard to prove (too HIGH). Without this guard a 16-tick
+// stop / 12-tick target cell "won" at +$73/trade with 34 of 53 unknown.
+export const SWEEP_MIN_RESOLVED_SHARE = 0.5
+
 export function bracketWhatIf(
   trades: BracketTrade[],
   stopTicks: number,
