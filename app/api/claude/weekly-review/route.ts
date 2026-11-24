@@ -6,8 +6,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { Trade, DailySession } from '@/types'
+import { Trade, DailySession, ApexAccount } from '@/types'
 import { RISK_PLAN_POLICY, SESSION_TIME_POLICY } from '@/lib/trading-system'
+import { accountDayFacts, accountDayFactLines } from '@/lib/account-day-rules'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
     const endDate = addDays(startDate, 6)
     const weekEndDate = isoDate(endDate)
 
-    const [{ data: tradesData }, { data: sessionsData }] = await Promise.all([
+    const [{ data: tradesData }, { data: sessionsData }, { data: accountsData }] = await Promise.all([
       supabase
         .from('trades')
         .select('*')
@@ -130,10 +131,17 @@ export async function POST(request: NextRequest) {
         .eq('user_id', userId)
         .gte('date', weekStartDate)
         .lte('date', weekEndDate),
+      supabase
+        .from('apex_accounts')
+        .select('*')
+        .eq('user_id', userId),
     ])
 
     const trades = (tradesData as Trade[]) || []
     const sessions = (sessionsData as DailySession[]) || []
+    const accounts = (accountsData as ApexAccount[]) || []
+    const accountById = new Map(accounts.map((a) => [a.id, a]))
+    const accountKey = (t: Trade) => (t.account_id && accountById.has(t.account_id) ? t.account_id : 'unlinked')
 
     if (trades.length === 0) {
       return NextResponse.json({ error: 'No trades found for this week' }, { status: 404 })
@@ -155,15 +163,46 @@ export async function POST(request: NextRequest) {
       .map(([date, dayTrades]) => {
         const dayPnL = dayTrades.reduce((s, t) => s + t.net_pnl, 0)
         const dayWins = dayTrades.filter((t) => t.net_pnl > 0).length
-        const lines = dayTrades.map((t, i) =>
-          `  Trade ${i + 1}: ${t.direction.toUpperCase()} ${t.quantity}x ${t.instrument || 'ES'} @ ${ctTime(t.entry_time)} CT | ` +
-          `Entry ${t.entry_price} → Exit ${t.exit_price} | P&L $${t.net_pnl.toFixed(2)} | ` +
-          `Setup: ${t.setup_tag || 'untagged'} | Bias: ${t.trade_bias || '?'} | Loc: ${t.trade_location || '?'} | ` +
-          `Mood: ${t.mood || '?'} | Grade: ${t.grade || '?'}`,
-        ).join('\n')
-        return `${weekdayLabel(date)} ${date} — ${dayTrades.length} trade(s), ${dayWins}W / ${dayTrades.length - dayWins}L, Net $${dayPnL.toFixed(2)}\n${lines}`
+        // Number trades across the whole day so "Trade 15" matches the journal's
+        // order, then list them under their own account with that account's
+        // plan facts — each account's limits apply only to its own trades.
+        const numbered = dayTrades.map((t, i) => ({ t, no: i + 1 }))
+        const groups = new Map<string, typeof numbered>()
+        for (const n of numbered) {
+          const key = accountKey(n.t)
+          groups.set(key, [...(groups.get(key) ?? []), n])
+        }
+        const blocks = Array.from(groups.entries()).map(([key, rows]) => {
+          const tradeLines = rows.map(({ t, no }) =>
+            `    Trade ${no}: ${t.direction.toUpperCase()} ${t.quantity}x ${t.instrument || 'ES'} @ ${ctTime(t.entry_time)} CT | ` +
+            `Entry ${t.entry_price} → Exit ${t.exit_price} | P&L $${t.net_pnl.toFixed(2)} | ` +
+            `Setup: ${t.setup_tag || 'untagged'} | Bias: ${t.trade_bias || '?'} | Loc: ${t.trade_location || '?'} | ` +
+            `Mood: ${t.mood || '?'} | Grade: ${t.grade || '?'}`,
+          ).join('\n')
+          const account = accountById.get(key)
+          if (!account) return `  Unlinked trades (no account — no plan limits apply):\n${tradeLines}`
+          const facts = accountDayFacts(
+            rows.map(({ t, no }) => ({ no, instrument: t.instrument, quantity: t.quantity, net_pnl: t.net_pnl, atr_at_entry: t.atr_at_entry })),
+            account,
+          )
+          const header = `  Account "${account.name}" (${account.account_size / 1000}K ${account.mode === 'pa' ? 'PA' : 'eval'})`
+          const factLines = facts
+            ? accountDayFactLines(facts).map((l) => `    Rule facts: ${l}`).join('\n')
+            : '    Rule facts: no written plan for this account size — plan limits not checked'
+          return `${header}:\n${tradeLines}\n${factLines}`
+        })
+        return `${weekdayLabel(date)} ${date} — ${dayTrades.length} trade(s), ${dayWins}W / ${dayTrades.length - dayWins}L, Net $${dayPnL.toFixed(2)} (all accounts)\n${blocks.join('\n')}`
       })
       .join('\n\n')
+
+    const accountWeekLines = Array.from(new Set(trades.map(accountKey)))
+      .map((key) => {
+        const rows = trades.filter((t) => accountKey(t) === key)
+        const net = rows.reduce((s, t) => s + t.net_pnl, 0)
+        const label = accountById.get(key)?.name ?? 'Unlinked'
+        return `- ${label}: ${rows.length} trade(s), Net $${net.toFixed(2)}`
+      })
+      .join('\n')
 
     const sessionContext = sessions
       .filter((s) => s.end_of_day_summary || s.pre_market_brief)
@@ -250,6 +289,8 @@ Hard Rule: Bias.Setup.Trigger.Location.Risk — all five before every trade.
 Grade: A=all criteria met; B=one minor deviation; C=any rule violation.
 ${RISK_PLAN_POLICY}
 
+ACCOUNTS: The trader runs separate Apex accounts, and each has its own plan above. Each day's trades are listed under the account they were placed on. Apply an account's limits ONLY to that account's trades — never add accounts together against one daily stop or loser count. The "Rule facts" lines are computed from the data and are authoritative: cite them (which account, which trade numbers) rather than recomputing stops, loser counts or size limits yourself. Name the account whenever you cite a risk or sizing violation.
+
 Return ONLY valid JSON with this exact structure:
 {
   "summary": "2-3 sentence narrative of the week — outcome, dominant theme, what stood out",
@@ -285,7 +326,10 @@ Return ONLY valid JSON with this exact structure:
     const userMessage = `Week: ${weekStartDate} → ${weekEndDate}
 Total trades: ${trades.length} (${winners.length}W / ${losers.length}L), Win rate ${winRate.toFixed(1)}%, Net P&L $${totalPnL.toFixed(2)}
 
-Trades by day:
+By account:
+${accountWeekLines}
+
+Trades by day, grouped by account:
 ${dailySummary}
 
 ${disciplineSection}
