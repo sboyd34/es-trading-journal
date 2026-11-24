@@ -19,6 +19,7 @@ import MarketNewsFeed from '@/components/dashboard/MarketNewsFeed'
 import ProactiveCoachingCard from '@/components/dashboard/ProactiveCoachingCard'
 import OffSystemDamageCard from '@/components/dashboard/OffSystemDamageCard'
 import LossAutopsyCard from '@/components/dashboard/LossAutopsyCard'
+import TargetHitRateCard from '@/components/dashboard/TargetHitRateCard'
 import DisciplineScoreCard from '@/components/dashboard/DisciplineScoreCard'
 import MarketStateCard from '@/components/market/MarketStateCard'
 import { isGateActive } from '@/lib/eod-gate'
@@ -170,6 +171,9 @@ export default function DashboardClient({ trades, todayTrades, riskRules, accoun
 
       {/* Loss autopsy — silent until losing trades have excursion classification */}
       <LossAutopsyCard trades={trades} />
+
+      {/* TP1 / TP2 hit rates — silent until a TP answer is recorded */}
+      <TargetHitRateCard trades={trades} />
 
       {/* Discipline score — silent when no trades today */}
       <DisciplineScoreCard
