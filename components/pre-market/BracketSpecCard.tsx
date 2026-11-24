@@ -33,10 +33,10 @@ interface BracketSpec {
 
 // MES_BRACKET (lib/apex-config), the same on both accounts: 2 MES, each behind
 // a 16-tick stop ($20 each, $40 total); leg 1 +16 ticks ($20), leg 2 +32 ticks
-// ($40) — $60 if both fill. Leg 2's stop stays at −16t after leg 1 fills.
+// ($40) — $60 if both fill. Leg 2's stop moves to breakeven when leg 1 fills.
 const MES_LEGS: BracketLeg[] = [
   { name: 'Leg 1', contracts: '1 MES', tp: '+16 ticks', sl: '−16 ticks', risk: '$20', win: '$20' },
-  { name: 'Leg 2', contracts: '1 MES', tp: '+32 ticks', sl: '−16 ticks', risk: '$20', win: '$40' },
+  { name: 'Leg 2', contracts: '1 MES', tp: '+32 ticks', sl: '−16 ticks → BE on TP1', risk: '$20', win: '$40' },
 ]
 
 const BRACKET_SPECS_25K: BracketSpec = {

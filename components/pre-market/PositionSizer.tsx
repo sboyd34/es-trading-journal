@@ -68,7 +68,8 @@ export function computeSizing(p: {
   if (instrument === 'MES') {
     cap = Math.min(cap, MES_BRACKET.contracts)
     esNote = `MES bracket: ${MES_BRACKET.contracts} contracts, ${MES_BRACKET.stopTicks}-tick stop each; ` +
-      `targets +${MES_BRACKET.targetTicks[0]}t / +${MES_BRACKET.targetTicks[1]}t.`
+      `targets +${MES_BRACKET.targetTicks[0]}t / +${MES_BRACKET.targetTicks[1]}t` +
+      (MES_BRACKET.breakevenAfterLeg1 ? '; leg 2 to breakeven when leg 1 fills.' : '.')
   }
 
   const softContracts = esBlocked ? 0 : Math.min(cap, Math.floor(softStop / riskPerContract))

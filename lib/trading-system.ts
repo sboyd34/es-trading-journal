@@ -56,7 +56,7 @@ export const RISK_PLAN_POLICY = `
 Apex Legacy Risk Plan (eval and PA until the trail locks — sized against the drawdown buffer):
 ${planLine('50K', 50000)}
 ${planLine('25K', 25000)}
-- /MES bracket (both accounts): ${MES_BRACKET.contracts} contracts, each behind a ${MES_BRACKET.stopTicks}-tick stop ($${MES_BRACKET.contracts * MES_BRACKET.stopTicks * 1.25} total risk); leg 1 targets +${MES_BRACKET.targetTicks[0]} ticks, leg 2 +${MES_BRACKET.targetTicks[1]} ticks ($${(MES_BRACKET.targetTicks[0] + MES_BRACKET.targetTicks[1]) * 1.25} if both fill). Deliberately below the per-trade risk band above.
+- /MES bracket (both accounts): ${MES_BRACKET.contracts} contracts, each behind a ${MES_BRACKET.stopTicks}-tick stop ($${MES_BRACKET.contracts * MES_BRACKET.stopTicks * 1.25} total risk); leg 1 targets +${MES_BRACKET.targetTicks[0]} ticks, leg 2 +${MES_BRACKET.targetTicks[1]} ticks ($${(MES_BRACKET.targetTicks[0] + MES_BRACKET.targetTicks[1]) * 1.25} if both fill)${MES_BRACKET.breakevenAfterLeg1 ? "; leg 2's stop moves to breakeven when leg 1 fills" : ''}. Deliberately below the per-trade risk band above.
 - Fixed profit targets, no runners — the trail counts unrealized gains, so a winner that comes back raises the floor
 - Never increase size to catch up after a red day; never trade past either daily limit; no re-entries after a max-loss morning
 - Post-loss day: trade half base size for the session

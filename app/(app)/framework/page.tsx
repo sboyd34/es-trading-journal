@@ -210,7 +210,7 @@ export default function FrameworkPage() {
                 { label: 'Contracts', values: ['1 MES', '1 MES', '2 MES'] },
                 { label: 'Profit Target', values: ['+16t ($20)', '+32t ($40)', '+$60 max'] },
                 { label: 'Stop Loss', values: ['-16t (-$20)', '-16t (-$20)', '-$40 max'] },
-                { label: 'Breakeven', values: ['—', 'Stop stays at -16t after Leg 1 fills', ''], muted: true },
+                { label: 'Breakeven', values: ['—', 'Move to BE when Leg 1 fills', ''], muted: true },
               ]}
             />
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-4 mb-2">/ES (if authorized)</p>
@@ -335,7 +335,7 @@ export default function FrameworkPage() {
                 { label: 'Contracts', values: ['1 MES', '1 MES', '2 MES'] },
                 { label: 'Profit Target', values: ['+16t ($20)', '+32t ($40)', '+$60 max'] },
                 { label: 'Stop Loss', values: ['-16t (-$20)', '-16t (-$20)', '-$40 max'] },
-                { label: 'Breakeven', values: ['—', 'Stop stays at -16t after Leg 1 fills', ''], muted: true },
+                { label: 'Breakeven', values: ['—', 'Move to BE when Leg 1 fills', ''], muted: true },
               ]}
             />
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-4 mb-2">/ES (if authorized)</p>

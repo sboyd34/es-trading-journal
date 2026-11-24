@@ -30,13 +30,15 @@ export const ES_BRACKET = { stopTicks: 8, targetTicks: 12 } as const
 // 16-tick stop ($20 each, $40 total); leg 1 targets +16 ticks ($20), leg 2
 // +32 ticks ($40) — $60 if both fill. Risk sits BELOW the plan's per-trade
 // band ($60–75 / $100–125): a deliberate, safer choice that is slower to the
-// target. Leg 2's stop does NOT move after leg 1 fills, as specified; flip
-// breakevenAfterLeg1 if that changes.
+// target. When leg 1 fills, leg 2's stop moves to breakeven (set 2026-11-24),
+// so the outcomes are -$40 (both stopped), +$20 (leg 1 TP, leg 2 out at
+// breakeven) or +$60 (both TP). The journal records which: the trade form's
+// "first contract hit TP?" and, when yes, "second contract hit TP?".
 export const MES_BRACKET = {
   contracts: 2,
   stopTicks: 16,
   targetTicks: [16, 32],
-  breakevenAfterLeg1: false,
+  breakevenAfterLeg1: true,
 } as const
 
 // The trading plan (trading_plan_apex_50k.pdf), sized against the trailing
