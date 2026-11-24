@@ -20,6 +20,7 @@ import {
   CalendarRange,
   Fingerprint,
   ScrollText,
+  GraduationCap,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -27,6 +28,7 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/journal', label: 'Journal', icon: BookOpen },
+  { href: '/coach', label: 'Coach', icon: GraduationCap },
   { href: '/pre-market', label: 'Pre-Market', icon: Sunrise },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/apex', label: 'Apex Tracker', icon: Target },
