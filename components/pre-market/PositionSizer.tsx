@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { APEX_CONFIGS, ACCOUNT_SIZES, ES_BRACKET, MES_BRACKET, planFor, type AccountSize } from '@/lib/apex-config'
+import { APEX_CONFIGS, ACCOUNT_SIZES, ES_BRACKET, ES_MAX_ATR, MES_BRACKET, planFor, type AccountSize } from '@/lib/apex-config'
 import { POINT_VALUES } from '@/lib/instruments'
 import type { ApexAccount } from '@/types'
 
@@ -47,8 +47,9 @@ export function computeSizing(p: {
   // maxContracts is in minis; Apex counts 10 micros per mini.
   let cap = instrument === 'MES' || instrument === 'MNQ' ? maxContracts * 10 : maxContracts
 
-  // /ES rule from the plan: 1 contract on the 50K (eval or PA); on the 25K
-  // only in PA phase 2. A tight stop must not talk the sizer past it.
+  // /ES rule from the plan: max 1 contract where allowed (both accounts, eval
+  // or PA); a 'pa-phase-2' size is blocked in the eval. A tight stop must not
+  // talk the sizer past it.
   let esBlocked: string | null = null
   let esNote: string | null = null
   if (instrument === 'ES') {
@@ -59,7 +60,7 @@ export function computeSizing(p: {
     } else if (plan.es.allowed === 'pa-phase-2') {
       esNote = `PA phase 2 only — trail locked at $${plan.paTrailLocksAt.toLocaleString()} with $1,500+ above it. ATR under 6.`
     } else {
-      esNote = `Max 1 ES · ${ES_BRACKET.stopTicks}-tick stop / ${ES_BRACKET.targetTicks}-tick target. ATR under 6 — else MES.`
+      esNote = `Max 1 ES · ${ES_BRACKET.stopTicks}-tick stop / ${ES_BRACKET.targetTicks}-tick target. Only when ATR is under ${ES_MAX_ATR} — at ${ES_MAX_ATR} or above, MES.`
     }
   }
 
@@ -72,8 +73,14 @@ export function computeSizing(p: {
       (MES_BRACKET.breakevenAfterLeg1 ? '; leg 2 to breakeven when leg 1 fills.' : '.')
   }
 
-  const softContracts = esBlocked ? 0 : Math.min(cap, Math.floor(softStop / riskPerContract))
-  const hardContracts = esBlocked ? 0 : Math.min(cap, Math.floor(hardStop / riskPerContract))
+  // An allowed /ES bracket carries its own risk (8 ticks = $100), which on the
+  // 25K sits above the $75 band by the trader's choice — budget up to it, or
+  // the sizer would call every allowed ES trade "too wide". A stop wider than
+  // the bracket still has to fit the larger of the two.
+  const esBracketRisk = ES_BRACKET.stopTicks * POINT_VALUES.ES * 0.25
+  const budget = (b: number) => (instrument === 'ES' && !esBlocked ? Math.max(b, esBracketRisk) : b)
+  const softContracts = esBlocked ? 0 : Math.min(cap, Math.floor(budget(softStop) / riskPerContract))
+  const hardContracts = esBlocked ? 0 : Math.min(cap, Math.floor(budget(hardStop) / riskPerContract))
   return {
     stopPoints,
     riskPerContract,

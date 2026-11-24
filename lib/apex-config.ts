@@ -26,6 +26,10 @@ export const ACCOUNT_SIZES = [25000, 50000, 100000, 150000, 250000, 300000] as c
 // target as PLAN_TARGET_R — it must stay dependency-free; change both together.
 export const ES_BRACKET = { stopTicks: 8, targetTicks: 12 } as const
 
+// /ES only when ATR at entry (the trade form's "ATR at entry") is UNDER this —
+// at or above it, trade the MES bracket instead. Both accounts.
+export const ES_MAX_ATR = 6
+
 // The /MES bracket, both accounts (set 2026-11-24): 2 contracts, each behind a
 // 16-tick stop ($20 each, $40 total); leg 1 targets +16 ticks ($20), leg 2
 // +32 ticks ($40) — $60 if both fill. Risk sits BELOW the plan's per-trade
@@ -41,6 +45,11 @@ export const MES_BRACKET = {
   breakevenAfterLeg1: true,
 } as const
 
+// Whether /ES may be traded on an account: 'yes', or only in PA phase 2 once
+// the trail has locked. Both live accounts are 'yes'; the sizer, Plan Replay
+// and review rules still honour 'pa-phase-2' if a size is ever restricted.
+export type EsPermission = 'yes' | 'pa-phase-2'
+
 // The trading plan (trading_plan_apex_50k.pdf), sized against the trailing
 // drawdown buffer. Applies to the eval AND to PA phase 1 (until the trail
 // locks at start + $100) — the plan says keep the eval plan exactly.
@@ -50,26 +59,27 @@ export const TRADING_PLAN = {
     rewardRisk: 2,
     dailyLossHard: 150,                 // two losers, done
     maxLosers: 2,
-    dailyProfitTarget: { min: 180, max: 225 },
+    dailyProfitTarget: 225,             // set by the trader 2026-11-24 (was the PDF's $180–225 range)
     breakevenAt: 100,                   // move stop to BE once a trade is up ~this much
     minTradingDays: 7,
     paTrailLocksAt: 25100,
-    // 1 ES at the 8-tick stop = $100 — over the $75 max, so only once the PA
-    // trail has locked with $1,500+ above it (Framework /ES Authorization).
-    es: { allowed: 'pa-phase-2', maxContracts: 1 },
+    // 1 ES at the 8-tick stop = $100 — over the $75 band, allowed by the
+    // trader's choice (2026-11-24; the PDF said PA phase 2 only). One ES
+    // loser uses $100 of the $150 daily stop.
+    es: { allowed: 'yes' as EsPermission, maxContracts: 1 },
   },
   50000: {
     riskPerTrade: { min: 100, max: 125 },
     rewardRisk: 2,
     dailyLossHard: 250,
     maxLosers: 2,
-    dailyProfitTarget: { min: 300, max: 375 },
+    dailyProfitTarget: 375,             // set by the trader 2026-11-24 (was the PDF's $300–375 range)
     breakevenAt: 150,
     minTradingDays: 0,
     paTrailLocksAt: 50100,
     // 1 ES at the 8-tick stop = $100 — inside the $100–$125 band. Eval or PA,
     // ATR under 6 (Framework /ES Authorization).
-    es: { allowed: 'yes', maxContracts: 1 },
+    es: { allowed: 'yes' as EsPermission, maxContracts: 1 },
   },
 } as const
 

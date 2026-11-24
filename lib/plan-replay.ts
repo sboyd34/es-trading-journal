@@ -1,5 +1,5 @@
 import type { ApexAccount, Trade } from '@/types'
-import { TRADING_PLAN, type PlanSize } from '@/lib/apex-config'
+import { ES_MAX_ATR, TRADING_PLAN, type PlanSize } from '@/lib/apex-config'
 
 // Plan Replay: re-run each account-day of real trades under the trading
 // plan's DAILY rules (lib/apex-config TRADING_PLAN) and compare the P&L the
@@ -7,12 +7,13 @@ import { TRADING_PLAN, type PlanSize } from '@/lib/apex-config'
 //
 // After each trade, in order: hard daily stop → two losers → profit target.
 // The first one that fires ends the day; later trades count as skipped.
-// The profit target fires at the LOW end of its range ("$180–225, then
-// stop" is met at $180).
+// The profit target fires once the day's running P&L reaches it.
 //
-// Size rules (ES where the plan forbids it, a loss over the per-trade max)
-// are FLAGGED, not re-priced: turning an ES fill into "what 7 MES would have
-// made" needs fill assumptions the journal can't support.
+// Size rules (ES where the plan forbids it, ES over its contract max, a loss
+// over the per-trade max) are FLAGGED, not re-priced: turning an ES fill into
+// "what 7 MES would have made" needs fill assumptions the journal can't
+// support. An allowed 1-ES trade is held to its bracket, not the dollar band:
+// on the 25K its $100 stop sits above the $75 band by the trader's choice.
 
 export interface ReplayTrade {
   trade: Trade
@@ -68,10 +69,16 @@ export function replayPlan(trades: Trade[], accounts: ApexAccount[]): ReplaySumm
 
     const replayed = ordered.map((trade, i): ReplayTrade => {
       const flags: string[] = []
-      if (trade.instrument === 'ES' && plan.es.allowed !== 'yes' && acct.mode === 'evaluation') {
+      const esAllowed = trade.instrument === 'ES' && (plan.es.allowed === 'yes' || acct.mode === 'pa')
+      if (trade.instrument === 'ES' && !esAllowed) {
         flags.push(`ES on the ${acct.account_size / 1000}K eval`)
       }
-      if (trade.net_pnl < -plan.riskPerTrade.max) {
+      if (trade.instrument === 'ES' && trade.atr_at_entry !== null && trade.atr_at_entry >= ES_MAX_ATR) {
+        flags.push(`ES at ATR ${trade.atr_at_entry} (needs under ${ES_MAX_ATR})`)
+      }
+      if (esAllowed && trade.quantity > plan.es.maxContracts) {
+        flags.push(`${trade.quantity}x ES — plan max is ${plan.es.maxContracts}`)
+      } else if (!esAllowed && trade.net_pnl < -plan.riskPerTrade.max) {
         flags.push(`Loss over the $${plan.riskPerTrade.max} per-trade max`)
       }
 
@@ -81,7 +88,7 @@ export function replayPlan(trades: Trade[], accounts: ApexAccount[]): ReplaySumm
         if (trade.net_pnl < 0) losers++
         if (running <= -plan.dailyLossHard) stopReason = `Hard daily stop (-$${plan.dailyLossHard})`
         else if (losers >= plan.maxLosers) stopReason = 'Two losers'
-        else if (running >= plan.dailyProfitTarget.min) stopReason = `Profit target (+$${plan.dailyProfitTarget.min})`
+        else if (running >= plan.dailyProfitTarget) stopReason = `Profit target (+$${plan.dailyProfitTarget})`
         if (stopReason !== null) stopAfter = i + 1
       }
       return { trade, taken, flags }

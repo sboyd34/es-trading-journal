@@ -175,7 +175,7 @@ export default function FrameworkPage() {
                   ['Per-Trade Risk (1:2 reward)', '$60–$75'],
                   ['Default (always)', '/MES — 2 contracts (16t stop, $40)'],
                   ['Breakeven Trigger', 'Trade up ~$100+'],
-                  ['/ES (authorized only)', 'PA phase 2 — see below'],
+                  ['/ES (authorized only)', '1 ES, eval or PA — see below'],
                 ]}
               />
               <div className="mt-4">
@@ -185,17 +185,16 @@ export default function FrameworkPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="/ES Authorization — All 3 Conditions Required">
+            <SectionCard title="/ES Authorization — Both Conditions Required">
               <KVTable
                 rows={[
-                  ['Account Status', 'PA phase 2 only — NEVER in Eval or before the trail locks'],
-                  ['Buffer Above Drawdown', '$1,500+ above the locked floor ($25,100)'],
-                  ['ATR at Entry', 'Under 6 — else /ES off the table'],
+                  ['Account Status', 'Eval OR PA — available in both'],
+                  ['ATR at Entry', 'Under 6 — at 6 or above, /MES only'],
                 ]}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-                Why: 1 ES at the 8-tick stop risks $100 — over the plan&apos;s $75 max per trade on the 25K.
-                The plan allows a modest size-up only once the trail has locked.
+                1 ES risks $100 behind its 8-tick stop — above the $60–$75 per-trade band, by choice.
+                One ES loser uses $100 of the -$150 daily stop, so a second ES loser closes the day $50 past it.
               </p>
             </SectionCard>
           </div>
@@ -234,8 +233,9 @@ export default function FrameworkPage() {
             <SectionCard title="Daily Limits">
               <KVTable
                 rows={[
-                  ['Daily Profit Target — STOP when hit', '+$180–$225'],
+                  ['Daily Profit Target — STOP when hit', '+$225'],
                   ['Daily Max Loss (HARD) — STOP when hit', '-$150'],
+                  ['Enforced in Tradovate', 'Both limits above — two losers is on you'],
                   ['Loss Limit', 'Two losers = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
@@ -252,7 +252,7 @@ export default function FrameworkPage() {
 
         <div className="mt-4">
           <SectionCard title="Kill Switch Rules — No Exceptions">
-            <KillSwitch rules={KILL_SWITCH_BASE('+$180–$225', '-$150')} />
+            <KillSwitch rules={KILL_SWITCH_BASE('+$225', '-$150')} />
           </SectionCard>
         </div>
 
@@ -314,7 +314,7 @@ export default function FrameworkPage() {
               <KVTable
                 rows={[
                   ['Account Status', 'Eval OR PA — available in both'],
-                  ['ATR at Entry', 'Under 6 — else /ES off the table'],
+                  ['ATR at Entry', 'Under 6 — at 6 or above, /MES only'],
                 ]}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
@@ -359,8 +359,9 @@ export default function FrameworkPage() {
             <SectionCard title="Daily Limits">
               <KVTable
                 rows={[
-                  ['Daily Profit Target — STOP when hit', '+$300–$375'],
+                  ['Daily Profit Target — STOP when hit', '+$375'],
                   ['Daily Max Loss (HARD) — STOP when hit', '-$250'],
+                  ['Enforced in Tradovate', 'Both limits above — two losers is on you'],
                   ['Loss Limit', 'Two losers = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
@@ -377,7 +378,7 @@ export default function FrameworkPage() {
 
         <div className="mt-4">
           <SectionCard title="Kill Switch Rules — No Exceptions">
-            <KillSwitch rules={KILL_SWITCH_BASE('+$300–$375', '-$250')} />
+            <KillSwitch rules={KILL_SWITCH_BASE('+$375', '-$250')} />
           </SectionCard>
         </div>
 
@@ -416,14 +417,13 @@ export default function FrameworkPage() {
               { label: 'Min Balance for Payout', values: ['$26,600', '$52,600'] },
               { label: 'Profit Before First Payout', values: ['$1,600', '$2,600'] },
               { label: 'Qualifying Days', values: ['5 @ $100', '5 @ $200'] },
-              { label: 'Daily Profit Target', values: ['$180–$225', '$300–$375'] },
+              { label: 'Daily Profit Target', values: ['$225', '$375'] },
               { label: 'Daily Max Loss (HARD)', values: ['-$150', '-$250'] },
               { label: 'Default Instrument', values: ['/MES — 2 (16t stop)', '/MES — 2 (16t stop)'] },
               { label: '/MES Targets (Leg 1 / Leg 2)', values: ['+16t / +32t', '+16t / +32t'] },
               { label: '/ES Contracts (if authorized)', values: ['1', '1'] },
-              { label: '/ES Risk at 8 Ticks vs Plan Max', values: ['$100 > $75 max', '$100 ≤ $125 max'] },
-              { label: '/ES Available During Eval?', values: ['NO', 'YES'] },
-              { label: '/ES Buffer Required', values: ['$1,500+ (PA phase 2)', 'None'] },
+              { label: '/ES Risk at 8 Ticks vs Plan Max', values: ['$100 > $75 max (by choice)', '$100 ≤ $125 max'] },
+              { label: '/ES Available During Eval?', values: ['YES', 'YES'] },
               { label: '/ES ATR Requirement', values: ['Under 6', 'Under 6'] },
               { label: 'Loss Limit', values: ['2 losers = done', '2 losers = done'] },
               { label: 'Cooldown After Loss', values: ['10 min', '10 min'] },

@@ -364,7 +364,7 @@ export async function POST(request: NextRequest) {
       ? {
           dailyLossHard: plan.dailyLossHard,
           maxLosers: plan.maxLosers,
-          dailyProfitTarget: plan.dailyProfitTarget.min,
+          dailyProfitTarget: plan.dailyProfitTarget,
         }
       : null
     const applyPlanRules = body.applyPlanRules !== false && accountPlanRules !== null
