@@ -10,7 +10,7 @@ import {
   type Adequacy,
 } from '@/lib/eval-uncertainty'
 import { APEX_CONFIGS, TRADING_PLAN, planFor, type AccountSize, type PlanSize } from '@/lib/apex-config'
-import { buildRSamples, buildPlanSizedSamples, type RSample, type SampleTrade } from '@/lib/eval-samples'
+import { buildRSamples, buildPlanSizedSamples, PLAN_TARGET_R, type RSample, type SampleTrade } from '@/lib/eval-samples'
 
 // The plan's max per-trade risk on the 25K ($75) and 50K ($125), then 2x and
 // 4x the 50K figure for contrast (trading_plan_apex_50k.pdf).
@@ -401,8 +401,9 @@ export async function POST(request: NextRequest) {
     // 8-tick stop, so the odds describe the plan rather than past sizing.
     // 'actual': replay the realized dollars as traded (lib/eval-samples).
     const sizing: 'plan' | 'actual' = body.sizing === 'actual' ? 'actual' : 'plan'
-    // Plan sizing only: assume the 8-tick / +16-tick bracket held (clip to
-    // [-1R, +2R]). Off by default — the history has stops wider than 8 ticks.
+    // Plan sizing only: assume the 8-tick / +12-tick bracket held (clip to
+    // [-1R, +PLAN_TARGET_R] — the /ES 8/12 bracket). Off by default — the
+    // history has stops wider than 8 ticks.
     const bracket = sizing === 'plan' && body.bracket === true
     const samples: RSample[] = sizing === 'plan'
       ? buildPlanSizedSamples(usableTrades, { bracket })
@@ -421,7 +422,7 @@ export async function POST(request: NextRequest) {
         ? `Sized to the plan: each of ${samples.length} trades re-scaled to its points per contract, ` +
           `risking $${input.riskPerTrade} behind the plan's 8-tick stop — past contract counts are ignored. ` +
           (bracket
-            ? `Bracket assumed to hold: every trade clipped to −1R…+2R (optimistic — it credits stops you did not always take). `
+            ? `Bracket assumed to hold: every trade clipped to −1R…+${PLAN_TARGET_R}R (optimistic — it credits stops you did not always take). `
             : `Losses are kept as actually taken, including ${samples.filter(s => s.r < -1).length} past the 8-tick stop. `)
         : `Replays realized net P&L across all ${samples.length} trades as actually sized; ` +
           `$${input.riskPerTrade}/trade scales position size uniformly. `) +

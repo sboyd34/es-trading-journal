@@ -129,12 +129,12 @@ check('plan: 4 ES +$1,000 equals 1 ES +$250',
   buildPlanSizedSamples([{ net_pnl: 1000, quantity: 4, instrument: 'ES', mfe: 5 }])[0],
   buildPlanSizedSamples([{ net_pnl: 250, quantity: 1, instrument: 'ES', mfe: 5 }])[0])
 {
-  // Bracket: -2.5R loser clipped to -1R, +2.5R winner to +2R, MFE 30.5R capped at 2R.
+  // Bracket: -2.5R loser clipped to -1R, +2.5R winner to +1.5R, MFE 30.5R capped at 1.5R.
   const b = buildPlanSizedSamples(fixture, { bracket: true })
   check('bracket: loser past the stop clipped to -1R', round(b[3].r), -1)
-  check('bracket: winner past the target clipped to +2R', round(b[2].r), 2)
+  check('bracket: winner past the target clipped to +1.5R (12 ticks)', round(b[2].r), 1.5)
   check('bracket: small trade inside the bracket unchanged', round(b[0].r), 0.1)
-  check('bracket: open profit capped at the target', b.map(x => x.mfeR === null ? null : round(x.mfeR)), [0.375, 0.125, 2, 1, null, 2, null])
+  check('bracket: open profit capped at the target', b.map(x => x.mfeR === null ? null : round(x.mfeR)), [0.375, 0.125, 1.5, 1, null, 1.5, null])
 }
 check('plan: missing quantity counts as 1 contract',
   round(buildPlanSizedSamples([{ net_pnl: 100, quantity: null, instrument: 'ES', mfe: null }])[0].r), 1)

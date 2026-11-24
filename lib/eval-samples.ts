@@ -79,10 +79,13 @@ export interface SampleTrade {
 // then multiplies by riskPerTrade, the dollar value of that 2-point stop at
 // plan size, so riskPerTrade means exactly what it means in the plan.
 export const PLAN_STOP_POINTS = 2 // the plan bracket's 8-tick stop
-export const PLAN_TARGET_R = 2    // +16 ticks, no runners
+// The plan's /ES target in R: 12 ticks / 8-tick stop = 1.5R, no runners.
+// MIRRORS ES_BRACKET in lib/apex-config.ts — this module stays dependency-free
+// so its test runs under bare node; change both together.
+export const PLAN_TARGET_R = 1.5
 
 // `bracket`: assume the plan's bracket held — every trade clipped to
-// [-1R, +2R], and open profit capped at the +2R target. Off by default,
+// [-1R, +PLAN_TARGET_R], and open profit capped at that target. Off by default,
 // because the history shows stops wider than 8 ticks; on, it answers "what
 // if I honor the stop?" (optimistic: a winner whose MAE would have touched
 // the stop is still counted as a winner when its MAE is unrecorded).

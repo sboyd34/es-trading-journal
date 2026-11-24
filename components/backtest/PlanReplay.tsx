@@ -6,6 +6,7 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { ctTimeLabel } from '@/lib/trade-flags'
 import { replayPlan } from '@/lib/plan-replay'
 import { bracketWhatIf } from '@/lib/bracket-whatif'
+import { ES_BRACKET } from '@/lib/apex-config'
 import { feeForContracts } from '@/lib/tradovate-parser'
 import type { ApexAccount, Trade } from '@/types'
 import { ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react'
@@ -33,8 +34,9 @@ const ES_FEE = feeForContracts('ES', 1)
 // Every trade replayed as 1 ES under a fixed stop/target (lib/bracket-whatif).
 // Shows a range, because the journal only partly knows each trade's path.
 function BracketWhatIfCard({ trades }: { trades: Trade[] }) {
-  const [stopTicks, setStopTicks] = useState(8)
-  const [targetTicks, setTargetTicks] = useState(16)
+  // Opens on the plan's /ES bracket.
+  const [stopTicks, setStopTicks] = useState<number>(ES_BRACKET.stopTicks)
+  const [targetTicks, setTargetTicks] = useState<number>(ES_BRACKET.targetTicks)
   const clampTicks = (v: number) => Math.min(Math.max(Math.round(v) || 1, 1), 80)
 
   const w = useMemo(() => bracketWhatIf(trades, stopTicks, targetTicks, { fee: ES_FEE }), [trades, stopTicks, targetTicks])

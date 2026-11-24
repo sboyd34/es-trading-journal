@@ -1,3 +1,5 @@
+import { ES_BRACKET } from '@/lib/apex-config'
+
 // Bracket what-if: replay every trade as 1 ES with a fixed stop and target, and
 // say honestly how much of the answer is known.
 //
@@ -53,12 +55,12 @@ export interface BracketWhatIf {
 
 const TICK = 0.25
 
-// Bracket Sweep grid, in ticks, centred on the plan's 8-tick stop / 16-tick
-// target. Shared by the sweep route and page (route files may only export
-// handlers, so the constants live here).
+// Bracket Sweep grid, in ticks, around the plan's /ES bracket (ES_BRACKET).
+// Shared by the sweep route and page (route files may only export handlers,
+// so the constants live here).
 export const SWEEP_STOP_TICKS = [6, 8, 10, 12, 16]
 export const SWEEP_TARGET_TICKS = [8, 12, 16, 20, 24, 32]
-export const PLAN_BRACKET = { stopTicks: 8, targetTicks: 16 }
+export const PLAN_BRACKET = ES_BRACKET
 // "Best combo" needs this many known outcomes, so a cell resting on a handful
 // of trades cannot win on noise...
 export const SWEEP_MIN_RESOLVED = 10

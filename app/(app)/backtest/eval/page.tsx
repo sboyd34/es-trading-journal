@@ -7,6 +7,7 @@ import {
   ResponsiveContainer, ReferenceLine, Legend,
 } from 'recharts'
 import { cn, formatCurrency } from '@/lib/utils'
+import { PLAN_TARGET_R } from '@/lib/eval-samples'
 import type { EvalMonteCarloResponse, ComboComparison } from '@/app/api/backtest/eval-monte-carlo/route'
 
 const LS_KEY = 'apex.eval.lastResult'
@@ -76,7 +77,7 @@ export default function EvalPage() {
   const [applyPlanRules,   setApplyPlanRules]    = useState(true)
   // Re-size every trade to the plan's fixed risk (vs replaying past sizing)
   const [planSizing,       setPlanSizing]        = useState(true)
-  // Assume the 8-tick / +16-tick bracket held (plan sizing only) — off shows
+  // Assume the /ES 8-tick / 12-tick bracket held (plan sizing only) — off shows
   // losses as actually taken
   const [assumeBracket,    setAssumeBracket]     = useState(false)
 
@@ -207,8 +208,8 @@ export default function EvalPage() {
               onChange={(e) => setAssumeBracket(e.target.checked)}
               className="h-4 w-4 accent-blue-600"
             />
-            Assume the 8-tick bracket held
-            <span className="text-xs text-gray-500">(clip every trade to −1R…+2R — what honoring the stop is worth)</span>
+            Assume the 8/12 bracket held
+            <span className="text-xs text-gray-500">(clip every trade to −1R…+{PLAN_TARGET_R}R — what honoring the stop is worth)</span>
           </label>
           <button
             onClick={runSimulation}

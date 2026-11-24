@@ -4,9 +4,8 @@ import { AlertTriangle } from 'lucide-react'
 
 /**
  * Static reference card for the MES bracket-order configuration.
- * Source: trading_plan_apex_50k.pdf — risk $60–75 (25K) / $100–125 (50K) per
- * trade at 1:2, fixed targets with no runners, breakeven at ~$100 / ~$150.
- * Contract counts keep the 8-tick stop and scale size to the plan's risk band.
+ * MES: the trader's 2-contract bracket (MES_BRACKET in lib/apex-config) — risk
+ * deliberately below the plan's per-trade band. ES: ES_BRACKET, 8/12 ticks.
  *
  * Original spec: docs/superpowers/specs/2026-05-26-bracket-spec-card-design.md
  *
@@ -32,28 +31,28 @@ interface BracketSpec {
   totalWin: string
 }
 
-// 7 MES × 8 ticks × $1.25 = $70 risk (plan band $60–75); 16 ticks = $140 (1:2).
-// Breakeven at +12 ticks = $105 (plan: ~$100+).
+// MES_BRACKET (lib/apex-config), the same on both accounts: 2 MES, each behind
+// a 16-tick stop ($20 each, $40 total); leg 1 +16 ticks ($20), leg 2 +32 ticks
+// ($40) — $60 if both fill. Leg 2's stop stays at −16t after leg 1 fills.
+const MES_LEGS: BracketLeg[] = [
+  { name: 'Leg 1', contracts: '1 MES', tp: '+16 ticks', sl: '−16 ticks', risk: '$20', win: '$20' },
+  { name: 'Leg 2', contracts: '1 MES', tp: '+32 ticks', sl: '−16 ticks', risk: '$20', win: '$40' },
+]
+
 const BRACKET_SPECS_25K: BracketSpec = {
   accountSize: '25K',
-  totalContracts: '7 MES total',
-  legs: [
-    { name: 'Single target', contracts: '7 MES', tp: '+16 ticks', sl: '−8 ticks → BE at +12t', risk: '$70', win: '$140' },
-  ],
-  totalRisk: '$70 max',
-  totalWin: '$140 max',
+  totalContracts: '2 MES total',
+  legs: MES_LEGS,
+  totalRisk: '$40 max',
+  totalWin: '$60 max',
 }
 
-// 12 MES × 8 ticks × $1.25 = $120 risk (plan band $100–125); 16 ticks = $240 (1:2).
-// Breakeven at +10 ticks = $150 (plan: ~$150+).
 const BRACKET_SPECS_50K: BracketSpec = {
   accountSize: '50K',
-  totalContracts: '12 MES total',
-  legs: [
-    { name: 'Single target', contracts: '12 MES', tp: '+16 ticks', sl: '−8 ticks → BE at +10t', risk: '$120', win: '$240' },
-  ],
-  totalRisk: '$120 max',
-  totalWin: '$240 max',
+  totalContracts: '2 MES total',
+  legs: MES_LEGS,
+  totalRisk: '$40 max',
+  totalWin: '$60 max',
 }
 
 function BracketTable({ spec }: { spec: BracketSpec }) {
@@ -126,8 +125,8 @@ export default function BracketSpecCard() {
         <p className="text-sm text-amber-200 leading-relaxed">
           <span className="font-semibold">ES only where the plan allows it.</span>{' '}
           An 8-tick ES stop is <span className="font-mono">$100/contract</span>.
-          On the 50K that fits the $100–$125 band — 1 ES, +16t target ($200),
-          breakeven at +12t ($150), ATR under 6. On the 25K it is over the $75
+          On the 50K that fits the $100–$125 band — 1 ES, −8t stop ($100),
+          +12t target ($150), ATR under 6. On the 25K it is over the $75
           max, so ES waits until the PA trail locks with{' '}
           <span className="font-mono">$1,500+</span> above it. No runners: the
           trail counts open profit.

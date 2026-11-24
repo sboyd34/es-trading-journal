@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { APEX_CONFIGS, ACCOUNT_SIZES, planFor, type AccountSize } from '@/lib/apex-config'
+import { APEX_CONFIGS, ACCOUNT_SIZES, ES_BRACKET, MES_BRACKET, planFor, type AccountSize } from '@/lib/apex-config'
 import { POINT_VALUES } from '@/lib/instruments'
 import type { ApexAccount } from '@/types'
 
@@ -59,8 +59,16 @@ export function computeSizing(p: {
     } else if (plan.es.allowed === 'pa-phase-2') {
       esNote = `PA phase 2 only — trail locked at $${plan.paTrailLocksAt.toLocaleString()} with $1,500+ above it. ATR under 6.`
     } else {
-      esNote = 'Max 1 ES. ATR under 6 — else MES.'
+      esNote = `Max 1 ES · ${ES_BRACKET.stopTicks}-tick stop / ${ES_BRACKET.targetTicks}-tick target. ATR under 6 — else MES.`
     }
+  }
+
+  // /MES is a fixed 2-contract bracket (MES_BRACKET), not sized up to the risk
+  // band — its $40 risk sits deliberately below the plan's band.
+  if (instrument === 'MES') {
+    cap = Math.min(cap, MES_BRACKET.contracts)
+    esNote = `MES bracket: ${MES_BRACKET.contracts} contracts, ${MES_BRACKET.stopTicks}-tick stop each; ` +
+      `targets +${MES_BRACKET.targetTicks[0]}t / +${MES_BRACKET.targetTicks[1]}t.`
   }
 
   const softContracts = esBlocked ? 0 : Math.min(cap, Math.floor(softStop / riskPerContract))

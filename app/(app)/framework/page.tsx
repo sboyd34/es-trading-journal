@@ -173,7 +173,7 @@ export default function FrameworkPage() {
               <KVTable
                 rows={[
                   ['Per-Trade Risk (1:2 reward)', '$60–$75'],
-                  ['Default (always)', '/MES — 7 contracts ($70 at 8 ticks)'],
+                  ['Default (always)', '/MES — 2 contracts (16t stop, $40)'],
                   ['Breakeven Trigger', 'Trade up ~$100+'],
                   ['/ES (authorized only)', 'PA phase 2 — see below'],
                 ]}
@@ -205,12 +205,12 @@ export default function FrameworkPage() {
           <SectionCard title="Bracket Order Specifications">
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">/MES</p>
             <BracketTable
-              cols={['Single target — no runners']}
+              cols={['Leg 1', 'Leg 2', 'Total']}
               rows={[
-                { label: 'Contracts', values: ['7 MES'] },
-                { label: 'Profit Target', values: ['+16t ($140)'] },
-                { label: 'Stop Loss', values: ['-8t (-$70)'] },
-                { label: 'Breakeven', values: ['Move to BE at +12t ($105)'], muted: true },
+                { label: 'Contracts', values: ['1 MES', '1 MES', '2 MES'] },
+                { label: 'Profit Target', values: ['+16t ($20)', '+32t ($40)', '+$60 max'] },
+                { label: 'Stop Loss', values: ['-16t (-$20)', '-16t (-$20)', '-$40 max'] },
+                { label: 'Breakeven', values: ['—', 'Stop stays at -16t after Leg 1 fills', ''], muted: true },
               ]}
             />
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-4 mb-2">/ES (if authorized)</p>
@@ -218,9 +218,9 @@ export default function FrameworkPage() {
               cols={['Single target — no runners']}
               rows={[
                 { label: 'Contracts', values: ['1 ES'] },
-                { label: 'Profit Target', values: ['+16t ($200)'] },
+                { label: 'Profit Target', values: ['+12t ($150)'] },
                 { label: 'Stop Loss', values: ['-8t (-$100)'] },
-                { label: 'Breakeven', values: ['Move to BE at +12t ($150)'], muted: true },
+                { label: 'Breakeven', values: ['None — the +12t target is the ~$150 trigger'], muted: true },
               ]}
             />
             <div className="mt-4">
@@ -298,7 +298,7 @@ export default function FrameworkPage() {
               <KVTable
                 rows={[
                   ['Per-Trade Risk (1:2 reward)', '$100–$125'],
-                  ['Default (always)', '/MES — 12 contracts ($120 at 8 ticks)'],
+                  ['Default (always)', '/MES — 2 contracts (16t stop, $40)'],
                   ['Breakeven Trigger', 'Trade up ~$150+'],
                   ['/ES (authorized only)', '1 contract ($100 at 8 ticks)'],
                 ]}
@@ -318,9 +318,9 @@ export default function FrameworkPage() {
                 ]}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-                1 ES at the 8-tick stop risks $100 with a +16t ($200) target and breakeven at +12t ($150) —
-                exactly the plan&apos;s 50K numbers, and less risk than the 12-MES default ($120). No extra
-                buffer gate: it adds no risk the plan doesn&apos;t already allow.
+                1 ES risks $100 behind its 8-tick stop with a +12-tick ($150) target (1:1.5) — inside the
+                plan&apos;s $100–$125 band. No extra buffer gate:
+                it adds no risk the plan doesn&apos;t already allow.
               </p>
             </SectionCard>
           </div>
@@ -330,12 +330,12 @@ export default function FrameworkPage() {
           <SectionCard title="Bracket Order Specifications">
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">/MES</p>
             <BracketTable
-              cols={['Single target — no runners']}
+              cols={['Leg 1', 'Leg 2', 'Total']}
               rows={[
-                { label: 'Contracts', values: ['12 MES'] },
-                { label: 'Profit Target', values: ['+16t ($240)'] },
-                { label: 'Stop Loss', values: ['-8t (-$120)'] },
-                { label: 'Breakeven', values: ['Move to BE at +10t ($150)'], muted: true },
+                { label: 'Contracts', values: ['1 MES', '1 MES', '2 MES'] },
+                { label: 'Profit Target', values: ['+16t ($20)', '+32t ($40)', '+$60 max'] },
+                { label: 'Stop Loss', values: ['-16t (-$20)', '-16t (-$20)', '-$40 max'] },
+                { label: 'Breakeven', values: ['—', 'Stop stays at -16t after Leg 1 fills', ''], muted: true },
               ]}
             />
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-4 mb-2">/ES (if authorized)</p>
@@ -343,9 +343,9 @@ export default function FrameworkPage() {
               cols={['Single target — no runners']}
               rows={[
                 { label: 'Contracts', values: ['1 ES'] },
-                { label: 'Profit Target', values: ['+16t ($200)'] },
+                { label: 'Profit Target', values: ['+12t ($150)'] },
                 { label: 'Stop Loss', values: ['-8t (-$100)'] },
-                { label: 'Breakeven', values: ['Move to BE at +12t ($150)'], muted: true },
+                { label: 'Breakeven', values: ['None — the +12t target is the ~$150 trigger'], muted: true },
               ]}
             />
             <div className="mt-4">
@@ -418,7 +418,8 @@ export default function FrameworkPage() {
               { label: 'Qualifying Days', values: ['5 @ $100', '5 @ $200'] },
               { label: 'Daily Profit Target', values: ['$180–$225', '$300–$375'] },
               { label: 'Daily Max Loss (HARD)', values: ['-$150', '-$250'] },
-              { label: 'Default Instrument', values: ['/MES — 7', '/MES — 12'] },
+              { label: 'Default Instrument', values: ['/MES — 2 (16t stop)', '/MES — 2 (16t stop)'] },
+              { label: '/MES Targets (Leg 1 / Leg 2)', values: ['+16t / +32t', '+16t / +32t'] },
               { label: '/ES Contracts (if authorized)', values: ['1', '1'] },
               { label: '/ES Risk at 8 Ticks vs Plan Max', values: ['$100 > $75 max', '$100 ≤ $125 max'] },
               { label: '/ES Available During Eval?', values: ['NO', 'YES'] },

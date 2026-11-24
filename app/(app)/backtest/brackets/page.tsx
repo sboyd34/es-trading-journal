@@ -12,7 +12,7 @@ import {
   SWEEP_MIN_RESOLVED_SHARE,
 } from '@/lib/bracket-whatif'
 
-// The trading plan's bracket (8-tick stop / 16-tick target) — outlined as "live".
+// The trading plan's /ES bracket (ES_BRACKET, 8/12) — outlined as "live".
 const LIVE_STOP = PLAN_BRACKET.stopTicks
 const LIVE_TARGET = PLAN_BRACKET.targetTicks
 const signedCurrency = (v: number) => `${v >= 0 ? '+' : '−'}${formatCurrency(Math.abs(v))}`

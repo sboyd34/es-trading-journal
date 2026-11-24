@@ -19,6 +19,26 @@ export const APEX_CONFIGS = {
 export type AccountSize = keyof typeof APEX_CONFIGS
 export const ACCOUNT_SIZES = [25000, 50000, 100000, 150000, 250000, 300000] as const satisfies readonly AccountSize[]
 
+// The /ES bracket: 8-tick stop ($100 on 1 ES), 12-tick target ($150) — 1:1.5.
+// Set 2026-11-24 from the trader's own data: ES winners cluster at exactly +12
+// ticks and 8/12 is the best-supported bracket in the sweep. (MES brackets on
+// the Framework page are separate.) lib/eval-samples.ts keeps a mirror of the
+// target as PLAN_TARGET_R — it must stay dependency-free; change both together.
+export const ES_BRACKET = { stopTicks: 8, targetTicks: 12 } as const
+
+// The /MES bracket, both accounts (set 2026-11-24): 2 contracts, each behind a
+// 16-tick stop ($20 each, $40 total); leg 1 targets +16 ticks ($20), leg 2
+// +32 ticks ($40) — $60 if both fill. Risk sits BELOW the plan's per-trade
+// band ($60–75 / $100–125): a deliberate, safer choice that is slower to the
+// target. Leg 2's stop does NOT move after leg 1 fills, as specified; flip
+// breakevenAfterLeg1 if that changes.
+export const MES_BRACKET = {
+  contracts: 2,
+  stopTicks: 16,
+  targetTicks: [16, 32],
+  breakevenAfterLeg1: false,
+} as const
+
 // The trading plan (trading_plan_apex_50k.pdf), sized against the trailing
 // drawdown buffer. Applies to the eval AND to PA phase 1 (until the trail
 // locks at start + $100) — the plan says keep the eval plan exactly.
