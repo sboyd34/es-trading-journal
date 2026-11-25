@@ -61,8 +61,10 @@ export async function runCoachReply(opts: {
 
   for (let step = 0; step < MAX_STEPS; step++) {
     const params = {
-      model: 'claude-opus-5-5',
+      // Sonnet 5.5: half Opus 5.5's price; same web search, fallback and tools.
+      model: 'claude-sonnet-5-5',
       max_tokens: 16000,
+      // Set explicitly: Sonnet 5.5 defaults to high. Medium suits several tool calls per reply.
       output_config: { effort: 'medium' as const },
       system: [
         { type: 'text' as const, text: SYSTEM, cache_control: { type: 'ephemeral' as const } },
