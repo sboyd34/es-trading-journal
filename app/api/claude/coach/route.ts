@@ -47,6 +47,9 @@ export async function POST(request: NextRequest) {
           console.error('[coach] error', err)
           const error = err instanceof Anthropic.RateLimitError
             ? 'Coach is rate-limited right now. Try again in a minute.'
+            // Anthropic answers an empty balance with a plain 400; say what it is.
+            : err instanceof Anthropic.BadRequestError && /credit balance/i.test(err.message)
+              ? 'Coach is out of Anthropic API credits. Add credits at console.anthropic.com > Plans & Billing.'
             : err instanceof Anthropic.APIError
               ? `Coach hit an API error (${err.status ?? 'network'}).`
               : 'Coach hit an unexpected error.'
