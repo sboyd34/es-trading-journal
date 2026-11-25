@@ -109,7 +109,7 @@ export default function RiskRulesBars({ todayTrades, accounts, riskRules }: Risk
                   ? 'DAILY LOSS LIMIT HIT — Stop trading'
                   : losersHit
                   ? g.losersMode === 'total'
-                    ? 'TWO LOSERS — Day is done'
+                    ? `${g.maxLosers} LOSERS — Day is done`
                     : 'CONSECUTIVE LOSS LIMIT — Take a break'
                   : 'Risk rules OK — Trade with discipline'}
               </div>

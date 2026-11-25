@@ -12,7 +12,7 @@ export interface AccountRiskGroup {
   trades: Trade[]
   dailyLossLimit: number
   maxLosers: number
-  // The plan's "two losers, done" counts every losing trade today; the
+  // The plan's "N losers, done" (plan.maxLosers) counts every losing trade today; the
   // Settings rule counts a consecutive streak.
   losersMode: 'total' | 'consecutive'
   fromPlan: boolean

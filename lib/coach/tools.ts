@@ -64,7 +64,7 @@ export const COACH_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
   {
     name: 'day_rule_check',
     description:
-      "For one trading date, check each account's trades against its own plan: hard stop (two losers / daily loss), trades after it, profit target, size and /ES ATR breaches. Computed in code - cite it rather than recomputing.",
+      "For one trading date, check each account's trades against its own plan: hard stop (loser limit / daily loss), trades after it, profit target, size and /ES ATR breaches. Computed in code - cite it rather than recomputing.",
     input_schema: {
       type: 'object',
       properties: { date: { type: 'string', description: 'Trading date YYYY-MM-DD.' } },

@@ -57,8 +57,8 @@ export const TRADING_PLAN = {
   25000: {
     riskPerTrade: { min: 60, max: 75 },
     rewardRisk: 2,
-    dailyLossHard: 150,                 // two losers, done
-    maxLosers: 2,
+    dailyLossHard: 150,                 // = two full-risk losers; kept when 3 losers became the limit
+    maxLosers: 3,                       // raised from 2 by the trader 2026-11-24
     dailyProfitTarget: 225,             // set by the trader 2026-11-24 (was the PDF's $180–225 range)
     breakevenAt: 100,                   // move stop to BE once a trade is up ~this much
     minTradingDays: 7,
@@ -72,7 +72,7 @@ export const TRADING_PLAN = {
     riskPerTrade: { min: 100, max: 125 },
     rewardRisk: 2,
     dailyLossHard: 250,
-    maxLosers: 2,
+    maxLosers: 3,                       // raised from 2 by the trader 2026-11-24
     dailyProfitTarget: 375,             // set by the trader 2026-11-24 (was the PDF's $300–375 range)
     breakevenAt: 150,
     minTradingDays: 0,

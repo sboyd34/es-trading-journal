@@ -184,7 +184,7 @@ export default function PlanReplay() {
       <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl px-5 py-4 flex gap-3">
         <ShieldCheck className="h-5 w-5 text-blue-400 shrink-0 mt-0.5" />
         <p className="text-sm text-gray-300 leading-relaxed">
-          Your real trades, re-run under the plan&apos;s daily rules — hard daily stop, two losers, profit
+          Your real trades, re-run under the plan&apos;s daily rules — hard daily stop, loser limit, profit
           target. The first rule that fires ends the day; everything after it is skipped. Size rules (ES on the
           25K eval, a loss over the per-trade max) are <span className="text-amber-300">flagged</span>, not re-priced.
         </p>

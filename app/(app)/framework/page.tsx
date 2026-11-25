@@ -110,7 +110,7 @@ function KillSwitch({ rules }: { rules: string[] }) {
 const KILL_SWITCH_BASE = (target: string, loss: string) => [
   `Hit ${target} profit → stop trading, day is done`,
   `Hit ${loss} loss → stop trading, day is done`,
-  'Two losers → stop trading, day is done (that is the daily max)',
+  'Three losers or the hard dollar stop → stop trading, day is done (that is the daily max)',
   'No re-entries after a max-loss morning — walk away',
   'Never increase size to catch up after a red day',
   'Take profit at the fixed target — no runners (the trail counts open profit)',
@@ -235,8 +235,8 @@ export default function FrameworkPage() {
                 rows={[
                   ['Daily Profit Target — STOP when hit', '+$225'],
                   ['Daily Max Loss (HARD) — STOP when hit', '-$150'],
-                  ['Enforced in Tradovate', 'Both limits above — two losers is on you'],
-                  ['Loss Limit', 'Two losers = done'],
+                  ['Enforced in Tradovate', 'Both limits above — three losers is on you'],
+                  ['Loss Limit', 'Three losers = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
               />
@@ -361,8 +361,8 @@ export default function FrameworkPage() {
                 rows={[
                   ['Daily Profit Target — STOP when hit', '+$375'],
                   ['Daily Max Loss (HARD) — STOP when hit', '-$250'],
-                  ['Enforced in Tradovate', 'Both limits above — two losers is on you'],
-                  ['Loss Limit', 'Two losers = done'],
+                  ['Enforced in Tradovate', 'Both limits above — three losers is on you'],
+                  ['Loss Limit', 'Three losers = done'],
                   ['Mandatory Cooldown After Any Loss', '10 minutes'],
                 ]}
               />
@@ -425,7 +425,7 @@ export default function FrameworkPage() {
               { label: '/ES Risk at 8 Ticks vs Plan Max', values: ['$100 > $75 max (by choice)', '$100 ≤ $125 max'] },
               { label: '/ES Available During Eval?', values: ['YES', 'YES'] },
               { label: '/ES ATR Requirement', values: ['Under 6', 'Under 6'] },
-              { label: 'Loss Limit', values: ['2 losers = done', '2 losers = done'] },
+              { label: 'Loss Limit', values: ['3 losers = done', '3 losers = done'] },
               { label: 'Cooldown After Loss', values: ['10 min', '10 min'] },
               { label: 'Max Payouts Per PA', values: ['6', '6'] },
               { label: 'Max Per Payout (Cycle 1)', values: ['$1,000', '$1,500'] },

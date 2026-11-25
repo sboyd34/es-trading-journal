@@ -73,7 +73,7 @@ export default function EvalPage() {
   const [currentEquity,    setCurrentEquity]     = useState<number | null>(null)
   const [currentThreshold, setCurrentThreshold]  = useState<number | null>(null)
   const [numSimulations,   setNumSimulations]    = useState(10_000)
-  // Apply the trading plan's daily rules (hard stop, two losers, profit target)
+  // Apply the trading plan's daily rules (hard stop, loser limit, profit target)
   const [applyPlanRules,   setApplyPlanRules]    = useState(true)
   // Re-size every trade to the plan's fixed risk (vs replaying past sizing)
   const [planSizing,       setPlanSizing]        = useState(true)
@@ -188,7 +188,7 @@ export default function EvalPage() {
               className="h-4 w-4 accent-blue-600"
             />
             Apply plan daily rules
-            <span className="text-xs text-gray-500">(hard stop · two losers · profit target)</span>
+            <span className="text-xs text-gray-500">(hard stop · loser limit · profit target)</span>
           </label>
           <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
             <input

@@ -5,7 +5,7 @@ import { ES_MAX_ATR, TRADING_PLAN, type PlanSize } from '@/lib/apex-config'
 // plan's DAILY rules (lib/apex-config TRADING_PLAN) and compare the P&L the
 // plan would have kept against what actually happened.
 //
-// After each trade, in order: hard daily stop → two losers → profit target.
+// After each trade, in order: hard daily stop → loser limit (plan.maxLosers) → profit target.
 // The first one that fires ends the day; later trades count as skipped.
 // The profit target fires once the day's running P&L reaches it.
 //
@@ -87,7 +87,7 @@ export function replayPlan(trades: Trade[], accounts: ApexAccount[]): ReplaySumm
         running += trade.net_pnl
         if (trade.net_pnl < 0) losers++
         if (running <= -plan.dailyLossHard) stopReason = `Hard daily stop (-$${plan.dailyLossHard})`
-        else if (losers >= plan.maxLosers) stopReason = 'Two losers'
+        else if (losers >= plan.maxLosers) stopReason = `${plan.maxLosers} losers`
         else if (running >= plan.dailyProfitTarget) stopReason = `Profit target (+$${plan.dailyProfitTarget})`
         if (stopReason !== null) stopAfter = i + 1
       }
