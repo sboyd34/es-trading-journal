@@ -26,10 +26,6 @@ export const ACCOUNT_SIZES = [25000, 50000, 100000, 150000, 250000, 300000] as c
 // target as PLAN_TARGET_R — it must stay dependency-free; change both together.
 export const ES_BRACKET = { stopTicks: 8, targetTicks: 12 } as const
 
-// /ES only when ATR at entry (the trade form's "ATR at entry") is UNDER this —
-// at or above it, trade the MES bracket instead. Both accounts.
-export const ES_MAX_ATR = 6
-
 // The /MES bracket, both accounts (set 2026-11-24): 2 contracts, each behind a
 // 16-tick stop ($20 each, $40 total); leg 1 targets +16 ticks ($20), leg 2
 // +32 ticks ($40) — $60 if both fill. Risk sits BELOW the plan's per-trade
@@ -77,8 +73,8 @@ export const TRADING_PLAN = {
     breakevenAt: 150,
     minTradingDays: 0,
     paTrailLocksAt: 50100,
-    // 1 ES at the 8-tick stop = $100 — inside the $100–$125 band. Eval or PA,
-    // ATR under 6 (Framework /ES Authorization).
+    // 1 ES at the 8-tick stop = $100 — inside the $100–$125 band. Eval or PA.
+    // (The ATR-under-6 gate was dropped by the trader 2026-11-25.)
     es: { allowed: 'yes' as EsPermission, maxContracts: 1 },
   },
 } as const

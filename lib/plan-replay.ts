@@ -1,5 +1,5 @@
 import type { ApexAccount, Trade } from '@/types'
-import { ES_MAX_ATR, TRADING_PLAN, type PlanSize } from '@/lib/apex-config'
+import { TRADING_PLAN, type PlanSize } from '@/lib/apex-config'
 
 // Plan Replay: re-run each account-day of real trades under the trading
 // plan's DAILY rules (lib/apex-config TRADING_PLAN) and compare the P&L the
@@ -72,9 +72,6 @@ export function replayPlan(trades: Trade[], accounts: ApexAccount[]): ReplaySumm
       const esAllowed = trade.instrument === 'ES' && (plan.es.allowed === 'yes' || acct.mode === 'pa')
       if (trade.instrument === 'ES' && !esAllowed) {
         flags.push(`ES on the ${acct.account_size / 1000}K eval`)
-      }
-      if (trade.instrument === 'ES' && trade.atr_at_entry !== null && trade.atr_at_entry >= ES_MAX_ATR) {
-        flags.push(`ES at ATR ${trade.atr_at_entry} (needs under ${ES_MAX_ATR})`)
       }
       if (esAllowed && trade.quantity > plan.es.maxContracts) {
         flags.push(`${trade.quantity}x ES — plan max is ${plan.es.maxContracts}`)

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { APEX_CONFIGS, ACCOUNT_SIZES, ES_BRACKET, ES_MAX_ATR, MES_BRACKET, planFor, type AccountSize } from '@/lib/apex-config'
+import { APEX_CONFIGS, ACCOUNT_SIZES, ES_BRACKET, MES_BRACKET, planFor, type AccountSize } from '@/lib/apex-config'
 import { POINT_VALUES } from '@/lib/instruments'
 import type { ApexAccount } from '@/types'
 
@@ -58,9 +58,9 @@ export function computeSizing(p: {
     if (plan.es.allowed === 'pa-phase-2' && mode === 'evaluation') {
       esBlocked = `No /ES on the ${accountSize / 1000}K eval — 1 ES at 8 ticks risks $100, over the $${hardStop} max. Use MES.`
     } else if (plan.es.allowed === 'pa-phase-2') {
-      esNote = `PA phase 2 only — trail locked at $${plan.paTrailLocksAt.toLocaleString()} with $1,500+ above it. ATR under 6.`
+      esNote = `PA phase 2 only — trail locked at $${plan.paTrailLocksAt.toLocaleString()} with $1,500+ above it.`
     } else {
-      esNote = `Max 1 ES · ${ES_BRACKET.stopTicks}-tick stop / ${ES_BRACKET.targetTicks}-tick target. Only when ATR is under ${ES_MAX_ATR} — at ${ES_MAX_ATR} or above, MES.`
+      esNote = `Max 1 ES · ${ES_BRACKET.stopTicks}-tick stop / ${ES_BRACKET.targetTicks}-tick target.`
     }
   }
 

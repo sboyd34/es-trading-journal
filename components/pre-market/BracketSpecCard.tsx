@@ -126,7 +126,7 @@ export default function BracketSpecCard() {
           <span className="font-semibold">ES only where the plan allows it.</span>{' '}
           An 8-tick ES stop is <span className="font-mono">$100/contract</span>.
           On the 50K that fits the $100–$125 band — 1 ES, −8t stop ($100),
-          +12t target ($150), ATR under 6. On the 25K it is over the $75
+          +12t target ($150). On the 25K it is over the $75
           max, so ES waits until the PA trail locks with{' '}
           <span className="font-mono">$1,500+</span> above it. No runners: the
           trail counts open profit.

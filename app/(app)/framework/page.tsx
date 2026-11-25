@@ -185,11 +185,10 @@ export default function FrameworkPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="/ES Authorization — Both Conditions Required">
+            <SectionCard title="/ES Authorization">
               <KVTable
                 rows={[
                   ['Account Status', 'Eval OR PA — available in both'],
-                  ['ATR at Entry', 'Under 6 — at 6 or above, /MES only'],
                 ]}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
@@ -310,11 +309,10 @@ export default function FrameworkPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="/ES Authorization — Both Conditions Required">
+            <SectionCard title="/ES Authorization">
               <KVTable
                 rows={[
                   ['Account Status', 'Eval OR PA — available in both'],
-                  ['ATR at Entry', 'Under 6 — at 6 or above, /MES only'],
                 ]}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
@@ -424,7 +422,6 @@ export default function FrameworkPage() {
               { label: '/ES Contracts (if authorized)', values: ['1', '1'] },
               { label: '/ES Risk at 8 Ticks vs Plan Max', values: ['$100 > $75 max (by choice)', '$100 ≤ $125 max'] },
               { label: '/ES Available During Eval?', values: ['YES', 'YES'] },
-              { label: '/ES ATR Requirement', values: ['Under 6', 'Under 6'] },
               { label: 'Loss Limit', values: ['3 losers = done', '3 losers = done'] },
               { label: 'Cooldown After Loss', values: ['10 min', '10 min'] },
               { label: 'Max Payouts Per PA', values: ['6', '6'] },

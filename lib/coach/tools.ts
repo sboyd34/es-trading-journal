@@ -64,7 +64,7 @@ export const COACH_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
   {
     name: 'day_rule_check',
     description:
-      "For one trading date, check each account's trades against its own plan: hard stop (loser limit / daily loss), trades after it, profit target, size and /ES ATR breaches. Computed in code - cite it rather than recomputing.",
+      "For one trading date, check each account's trades against its own plan: hard stop (loser limit / daily loss), trades after it, profit target, size breaches. Computed in code - cite it rather than recomputing.",
     input_schema: {
       type: 'object',
       properties: { date: { type: 'string', description: 'Trading date YYYY-MM-DD.' } },
@@ -311,7 +311,7 @@ async function run(name: string, input: Record<string, unknown>, ctx: Ctx): Prom
           const rows = numbered.filter(({ t }) => (t.account_id && byId.has(t.account_id) ? t.account_id : 'unlinked') === key)
           const account = byId.get(key)
           const facts = account
-            ? accountDayFacts(rows.map(({ t, no }) => ({ no, instrument: t.instrument, quantity: t.quantity, net_pnl: t.net_pnl, atr_at_entry: t.atr_at_entry })), account)
+            ? accountDayFacts(rows.map(({ t, no }) => ({ no, instrument: t.instrument, quantity: t.quantity, net_pnl: t.net_pnl })), account)
             : null
           return {
             account: account?.name ?? 'unlinked (no plan applies)',

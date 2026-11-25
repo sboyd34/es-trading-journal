@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
           const account = accountById.get(key)
           if (!account) return `  Unlinked trades (no account — no plan limits apply):\n${tradeLines}`
           const facts = accountDayFacts(
-            rows.map(({ t, no }) => ({ no, instrument: t.instrument, quantity: t.quantity, net_pnl: t.net_pnl, atr_at_entry: t.atr_at_entry })),
+            rows.map(({ t, no }) => ({ no, instrument: t.instrument, quantity: t.quantity, net_pnl: t.net_pnl })),
             account,
           )
           const header = `  Account "${account.name}" (${account.account_size / 1000}K ${account.mode === 'pa' ? 'PA' : 'eval'})`

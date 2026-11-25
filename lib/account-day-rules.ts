@@ -1,4 +1,4 @@
-import { ES_MAX_ATR, MES_BRACKET, TRADING_PLAN, type PlanSize } from './apex-config'
+import { MES_BRACKET, TRADING_PLAN, type PlanSize } from './apex-config'
 
 // One account's trading day checked against its own TRADING_PLAN, computed in
 // code so AI reviews cite facts instead of doing the arithmetic. The weekly
@@ -11,7 +11,6 @@ export interface DayTrade {
   instrument: string | null
   quantity: number
   net_pnl: number
-  atr_at_entry: number | null
 }
 
 export interface AccountForRules {
@@ -37,8 +36,6 @@ export interface AccountDayFacts {
   profitTargetAt: number | null
   tradesAfterProfitTarget: number[]
   sizeBreaches: SizeBreach[]
-  // ES trades with no ATR recorded — the ATR gate can't be checked on them.
-  esAtrUnknown: number[]
 }
 
 export function planForAccount(account: AccountForRules) {
@@ -56,7 +53,6 @@ export function accountDayFacts(trades: DayTrade[], account: AccountForRules): A
   let hardStopReason: string | null = null
   let profitTargetAt: number | null = null
   const sizeBreaches: SizeBreach[] = []
-  const esAtrUnknown: number[] = []
 
   for (const t of trades) {
     net += t.net_pnl
@@ -80,11 +76,6 @@ export function accountDayFacts(trades: DayTrade[], account: AccountForRules): A
       } else if (t.quantity > plan.es.maxContracts) {
         sizeBreaches.push({ no: t.no, detail: `${t.quantity}x ES — plan max is ${plan.es.maxContracts}` })
       }
-      if (t.atr_at_entry === null) {
-        esAtrUnknown.push(t.no)
-      } else if (t.atr_at_entry >= ES_MAX_ATR) {
-        sizeBreaches.push({ no: t.no, detail: `ES at ATR ${t.atr_at_entry} — /ES needs ATR under ${ES_MAX_ATR}` })
-      }
     } else if (inst === 'MES' && t.quantity > MES_BRACKET.contracts) {
       sizeBreaches.push({ no: t.no, detail: `${t.quantity}x MES — the bracket is ${MES_BRACKET.contracts} contracts` })
     }
@@ -100,7 +91,6 @@ export function accountDayFacts(trades: DayTrade[], account: AccountForRules): A
     profitTargetAt,
     tradesAfterProfitTarget: profitTargetAt === null ? [] : trades.filter((t) => t.no > profitTargetAt!).map((t) => t.no),
     sizeBreaches,
-    esAtrUnknown,
   }
 }
 
@@ -117,10 +107,7 @@ export function accountDayFactLines(f: AccountDayFacts): string[] {
       (f.tradesAfterProfitTarget.length ? `traded after it: ${nos(f.tradesAfterProfitTarget)} (plan: "then stop")` : 'stopped — respected'))
   }
   lines.push(f.sizeBreaches.length
-    ? `Size / ATR breaches: ${f.sizeBreaches.map((b) => `#${b.no} ${b.detail}`).join('; ')}`
-    : 'Size / ATR breaches: none')
-  if (f.esAtrUnknown.length) {
-    lines.push(`ES trades with no ATR recorded: ${nos(f.esAtrUnknown)} — the ATR-under-${ES_MAX_ATR} rule can't be checked (unverified, not a violation)`)
-  }
+    ? `Size breaches: ${f.sizeBreaches.map((b) => `#${b.no} ${b.detail}`).join('; ')}`
+    : 'Size breaches: none')
   return lines
 }
