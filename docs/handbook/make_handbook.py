@@ -171,13 +171,13 @@ CALL("<b>The daily stop has two parts: whichever comes first ends the day.</b> T
 H2("Brackets")
 TABLE([["Bracket", "Contracts", "Stop", "Target", "Notes"],
        ["/MES (default)", "2 MES", "16 ticks each ($40 total)", "Leg 1 +16t ($20), leg 2 +32t ($40)", "Leg 2's stop moves to breakeven when leg 1 fills. Outcomes: -$40, +$20 or +$60"],
-       ["/ES (authorized only)", "1 ES", "8 ticks ($100)", "12 ticks ($150)", "Only when ATR at entry is under 6; at 6 or above, /MES only. Max 1 ES on either account"]],
+       ["/ES (authorized only)", "1 ES", "8 ticks ($100)", "12 ticks ($150)", "Max 1 ES on either account"]],
       [1.15 * inch, 0.8 * inch, 1.25 * inch, 1.5 * inch, 1.8 * inch])
 B(["Save both brackets as ATM templates; ticks are never typed during a live setup.",
    "Never trade /MES and /ES at the same time: you are always in one bracket.",
    "On the 25K, one /ES loser uses $100 of the $150 daily stop. That is your deliberate choice, not a violation.",
-   "Since 24 November 2026 the daily loss limit and profit target are hard limits in Tradovate. The three-loser rule, the "
-   "/ES contract max and the ATR-under-6 gate are <b>not</b> platform-enforced: they rest on you."])
+   "Since 24 November 2026 the daily loss limit and profit target are hard limits in Tradovate. The three-loser rule and the "
+   "/ES contract max are <b>not</b> platform-enforced: they rest on you."])
 H2("Kill switch rules (no exceptions)")
 B(["Hit the daily profit target: stop trading, the day is done. Hit the daily max loss: stop, the day is done.",
    "Three losers or the hard dollar stop: stop trading, the day is done. No re-entries after a max-loss morning.",
@@ -228,7 +228,7 @@ TABLE([["Field", "Why it matters"],
        ["Setup tag, grade, mood", "Drive the setup matrix, Trade DNA, compliance score, tilt meter and emotion charts"],
        ["Stop and target", "Required. Give R-multiples, planned vs actual R:R, and the R distribution in Reports"],
        ["First / second contract hit TP?", "For the /MES bracket: records -$40, +$20 or +$60 outcomes and feeds the Target Hit Rate card"],
-       ["ATR at entry", "Checks the /ES rule (under 6) and feeds the weekly review"],
+       ["ATR at entry", "Volatility at entry; flags a stop that looks mistyped (far wider than ATR)"],
        ["MAE / MFE", "How far the trade went against and for you. Filled automatically where excursion data is available"],
        ["Account", "Which Apex account; drives per-account risk bars and day rules"],
        ["Tags, notes, voice, screenshots", "Free-form context; tags are searchable and appear in AI reviews"]],
@@ -385,7 +385,7 @@ CALL("<b>Judge levels and setups by outcome in R, not by how often price touches
 H1("14. Glossary")
 TABLE([["Term", "Meaning"],
        ["Apex legacy", "Your accounts' rules: intraday trailing drawdown that counts open profit, no Apex daily loss limit"],
-       ["ATR at entry", "Volatility when you entered; /ES is allowed only under 6"],
+       ["ATR at entry", "Volatility when you entered; used to sanity-check your stop"],
        ["Breakeven trigger", "Profit at which the stop moves to entry (about $100 on 25K, $150 on 50K)"],
        ["Compliance score", "Share of the week's trades that respected the full rules framework"],
        ["Daily hard stop", "The dollar loss that ends the day: $150 (25K), $250 (50K); enforced in Tradovate"],
